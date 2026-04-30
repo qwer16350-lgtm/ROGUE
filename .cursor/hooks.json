@@ -12,6 +12,13 @@
         "failClosed": true
       }
     ],
+    "beforeShellExecution": [
+      {
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/enforce-daily-git-gate.ps1",
+        "matcher": "git\\s",
+        "failClosed": true
+      }
+    ],
     "preToolUse": [
       {
         "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/enforce-patch-gate.ps1",

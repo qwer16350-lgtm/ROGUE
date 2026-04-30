@@ -12,6 +12,8 @@
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'hook-parse-stdin.ps1')
+. (Join-Path $PSScriptRoot 'daily-workflow-state.ps1')
+
 function Get-RepoRootSafe {
   try {
     return (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
@@ -103,6 +105,14 @@ try {
   if ($parseStatus -like 'json_ok*' -and (Test-ApprovePatchToken $prompt)) { $val = '1' }
 
   Set-GateSafe -Path $flagPath -Value $val
+
+  try {
+    if ($parseStatus -like 'json_ok*') {
+      Update-WorkflowFromUserPrompt -RepoRoot $projRoot -UserPrompt $prompt
+    }
+  }
+  catch {
+  }
 
   $note = 'ok'
   if ($parseStatus -eq 'json_error') { $note = 'gate_forced_zero_json_error' }

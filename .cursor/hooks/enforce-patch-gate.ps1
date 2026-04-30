@@ -10,6 +10,7 @@
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'hook-parse-stdin.ps1')
+. (Join-Path $PSScriptRoot 'daily-workflow-state.ps1')
 
 function Get-RepoRootSafe {
   try {
@@ -34,6 +35,23 @@ function Get-BlockedToolNames {
 function Test-BlockedAgentTool([string]$name) {
   if ([string]::IsNullOrWhiteSpace($name)) { return $false }
   foreach ($x in @(Get-BlockedToolNames)) {
+    if ([string]::Equals($x, $name, [StringComparison]::OrdinalIgnoreCase)) {
+      return $true
+    }
+  }
+  return $false
+}
+
+function Test-ShellLikeTool([string]$name) {
+  if ([string]::IsNullOrWhiteSpace($name)) {
+    return $false
+  }
+  foreach (
+    $x in @(
+      'run_terminal_cmd', 'run_command', 'RunCommand', 'execute_command',
+      'Shell', 'terminal', 'Terminal', 'integrated_terminal'
+    )
+  ) {
     if ([string]::Equals($x, $name, [StringComparison]::OrdinalIgnoreCase)) {
       return $true
     }
@@ -94,9 +112,15 @@ function Write-HooksDebugOneLine {
   }
 }
 
-function Write-DenyEnvelope {
+function Write-DenyEnvelopePatch {
   $um = '[ROGUE] Edit/write tools blocked. Reply with PLAN only, then next message send exact token APPROVE_PATCH.'
   $am = 'Repo gated: APPROVE_PATCH must appear verbatim in user prompt before edit/terminal tools; see hooks-debug.log for tool_name.'
+  @{ permission = 'deny'; user_message = $um; agent_message = $am } | ConvertTo-Json -Compress
+}
+
+function Write-DenyEnvelopeSession {
+  $um = '[ROGUE 세션 플로] 코드 편집/Task 막힘 — **`시작할게`** 필요. 단, **`끝마칠게` 직후 `commit_allowed`면 git용 터미널(runcmd 등)은 `시작할게` 없이 허용**됩니다(`APPROVE_PATCH`는 그대로).'
+  $am = 'session_closed: edits blocked; Shell allowed when commit_allowed after 끝마칠게 — docs/DAILY_WORKFLOW.md'
   @{ permission = 'deny'; user_message = $um; agent_message = $am } | ConvertTo-Json -Compress
 }
 
@@ -149,7 +173,7 @@ if ([string]::IsNullOrWhiteSpace($projRoot)) {
   if ($isBlockedTool) {
     Write-HooksDebugOneLine -ProjRoot $effectiveRootForLog -ToolSnippet $toolName `
       -GateValue $gateForLog -Blocked 'yes' -Decision 'deny' -note 'missing_repo_root'
-    Write-DenyEnvelope
+    Write-DenyEnvelopePatch
     exit 0
   }
   Write-HooksDebugOneLine -ProjRoot $effectiveRootForLog -ToolSnippet $toolName `
@@ -171,15 +195,36 @@ try {
   }
 
   if ($allowed) {
+    $dailyStatePath = Join-Path $projRoot '.cursor\.daily_workflow_state.json'
+    # 상태 파일이 아직 없음 = 토큰으로 한 번도 기록 안 됨 — 세션 게이트 생략(APPROVE_PATCH만 적용)
+    if (Test-Path -LiteralPath $dailyStatePath) {
+      $sessionOpen = Get-WorkflowSessionActive -RepoRoot $projRoot
+      if (-not $sessionOpen) {
+        if ((Test-ShellLikeTool $toolName) -and (Get-WorkflowCommitAllowed -RepoRoot $projRoot)) {
+          Write-HooksDebugOneLine -ProjRoot $projRoot -ToolSnippet $toolName `
+            -GateValue $gateForLog -Blocked $blockedTag -Decision 'allow' -note 'session_closed_shell_commit_ok'
+          @{ permission = 'allow' } | ConvertTo-Json -Compress
+          exit 0
+        }
+        Write-HooksDebugOneLine -ProjRoot $projRoot -ToolSnippet $toolName `
+          -GateValue $gateForLog -Blocked $blockedTag -Decision 'deny' -note 'session_closed'
+        Write-DenyEnvelopeSession
+        exit 0
+      }
+      $noteSession = 'gate_open_session_ok'
+    }
+    else {
+      $noteSession = 'gate_open_session_bootstrap_skip'
+    }
     Write-HooksDebugOneLine -ProjRoot $projRoot -ToolSnippet $toolName `
-      -GateValue $gateForLog -Blocked $blockedTag -Decision 'allow' -note 'gate_open'
+      -GateValue $gateForLog -Blocked $blockedTag -Decision 'allow' -note $noteSession
     @{ permission = 'allow' } | ConvertTo-Json -Compress
     exit 0
   }
 
   Write-HooksDebugOneLine -ProjRoot $projRoot -ToolSnippet $toolName `
     -GateValue $gateForLog -Blocked $blockedTag -Decision 'deny' -note 'gate_closed'
-  Write-DenyEnvelope
+  Write-DenyEnvelopePatch
   exit 0
 }
 catch {
