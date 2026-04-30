@@ -1,0 +1,62 @@
+{
+  "name": "MyFirstGame",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/ReplicatedStorage/Shared"
+      },
+      "VFX": {
+        "$className": "Folder",
+        "Hit": {
+          "$className": "Folder"
+        },
+        "Death": {
+          "$className": "Folder"
+        },
+        "Attack": {
+          "$className": "Folder"
+        }
+      },
+      "Remotes": {
+        "$className": "Folder",
+        "VFXEvent": {
+          "$className": "RemoteEvent"
+        },
+        "StageFlowRequest": {
+          "$className": "RemoteEvent"
+        },
+        "LobbyEnterRequest": {
+          "$className": "RemoteEvent"
+        }
+      }
+    },
+    "ServerScriptService": {
+      "$path": "src/ServerScriptService"
+    },
+    "ServerStorage": {
+      "MapAssets": {
+        "$path": "src/ServerStorage/MapAssets"
+      }
+    },
+    "Workspace": {
+      "Map": {
+        "$path": "src/Workspace/Map"
+      },
+      "Lobby": {
+        "$path": "src/Workspace/Lobby"
+      }
+    },
+    "StarterGui": {
+      "$path": "src/StarterGui"
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "$path": "src/StarterPlayer/StarterPlayerScripts"
+      },
+      "StarterCharacterScripts": {
+        "$path": "src/StarterPlayer/StarterCharacterScripts"
+      }
+    }
+  }
+}

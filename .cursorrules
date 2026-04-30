@@ -1,0 +1,7 @@
+# ROGUE — Cursor 항시 힌트 (프로젝트 루트)
+# 상세 규범은 .cursor/rules/*.mdc 와 AGENTS.md 가 정본이다.
+
+- repo-change 시 첫 답변: ## PLAN 만(planner.md 형식). 같은 응답에서 파일 편집 금지.
+- src/ 패치는 사용자 명시 승인 후에만.
+- 진실 소스: src/ + default.project.json. GUI: src/StarterGui/.
+- 세부: @AGENTS.md @.cursor/rules/00-priority-always.mdc

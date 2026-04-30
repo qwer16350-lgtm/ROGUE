@@ -1,0 +1,1 @@
+MapService places cloned structures here (e.g. Structure_Grassland_Bottleneck_Current).

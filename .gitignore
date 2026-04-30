@@ -1,0 +1,9 @@
+*.rbxl.lock
+*.rbxlx.lock
+.DS_Store
+Thumbs.db
+sourcemap.json
+
+# Cursor patch gate (승인 키워드 훅 상태 — 로컬만)
+.cursor/.patch_gate_allow
+.cursor/hooks-debug.log

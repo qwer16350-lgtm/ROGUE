@@ -1,0 +1,20 @@
+---
+description: ROGUE 최우선 요약(항시) — 세부는 01·02·03. Agents 정의 아님
+alwaysApply: true
+---
+
+# Priority — 항시 먼저 적용
+
+아래는 **`01-workflow` / `02-roblox-boundaries` / `03-gui-source-of-truth`** 의 **짧은 앵커**다. 세부·예외는 각 파일이 정본이다.
+
+## 반드시
+
+1. **다음 행동을 정하기 전**(planning next move 포함) → **`AGENTS.md` + `.cursor/rules/` + 필요 시 `.cursor/agents/`** 와 충돌 없이 플랜·도구를 고른다.
+2. **`src/`·`default.project.json`·레포 하네스를 바꿀 수 있는 요청** → 그 턴 **첫 응답은 `## PLAN`만** (`01-workflow.mdc`). **같은 응답에서 패치 도구 금지.**
+3. **`src/` 게임 코드·레포 파일 수정** → 사용자 **명시 승인 뒤**에만 패치 (`01-workflow.mdc`).
+4. **코드·프로젝트 트리 정본** → 디스크 **`src/`** + **`default.project.json`** (`02-roblox-boundaries.mdc`).
+5. **GUI 자산 정본** → **`src/StarterGui/`** ; PlayerGui 런타임만 보고 레포를 바꾸지 않음 (`03-gui-source-of-truth.mdc`).
+
+## 하지 말 것 (한 줄)
+
+- 플랜·승인 없이 `src/` 수정 · 플랜과 패치 동시 출력 · Studio-only 스크립트를 정본으로 취급 · HUD가 서버 권한 로직 소유 · 승인 없는 경로 이동·리네임.

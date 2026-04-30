@@ -1,0 +1,49 @@
+---
+description: ROGUE Roblox/Rojo 진실·레이어 — Rules(항시 운영 규칙). Agents/Skills 정의 아님
+alwaysApply: true
+---
+
+# Rules: Roblox + Rojo 경계 (ROGUE)
+
+**Rules** 범주 — 반복 실행 체크는 필요 시 Skill `roblox-rojo-guard` 등과 함께 쓴다 (Skill은 규칙을 대체하지 않음).
+
+## 진실 소스
+
+- **스크립트·모듈·프로젝트 트리**의 진실 소스는 저장소 **`src/`** 와 루트 **`default.project.json`** 이다.
+- Roblox Studio에만 존재하고 `src/`에 없는 스크립트를 “정본”으로 삼지 않는다. 동기화는 Rojo 등으로 맞춘다.
+
+## 엔트리 포인트 (유지)
+
+- 서버: `src/ServerScriptService/MainServer.server.lua`
+- 클라이언트: `src/StarterPlayer/StarterPlayerScripts/MainClient.client.lua`
+
+새 기능은 가능하면 **별도 ModuleScript/서비스**로 추가하고 엔트리에서는 require/초기화만 한다 (플랜에 따름).
+
+### 엔트리 비대화 금지
+
+- `MainServer.server.lua` / `MainClient.client.lua` 에 **대형 로직·기능 덩어리**를 직접 쌓지 않는다. wiring, `require`, 서비스/모듈 초기화 정도로 유지한다.
+- 위반 시: **플랜**에 “엔트리에 남기는 이유”가 있어야 하며, 기본은 **새 ModuleScript/서비스**로 옮긴다.
+
+### `Utils.lua` 잡탕화 금지
+
+- `src/ReplicatedStorage/Shared/Utils.lua` (및 단일 catch-all 유틸)에 **서로 무관한 도메인 로직·게임 규칙**을 계속 덧붙이지 않는다.
+- 재사용 단위는 **별도 모듈·폴더**로 분리하고, Utils는 좁은 범위의 순수 헬퍼만 유지한다.
+
+### 클라 스크립트와 서버 권한
+
+- **LocalScript·클라 전용 스크립트**에 보상 확정·영구 스탯·스테이지 권한·인벤토리 확정 등 **서버만 판단해야 하는 로직**을 두지 않는다. 클라는 요청·표시·예측 UI만 — 최종 판정은 서버 모듈.
+
+## 계층
+
+| 계층 | 경로 관행 |
+|------|-----------|
+| 서버 전용 | `src/ServerScriptService/` |
+| 클라 전용 | `src/StarterPlayer/StarterPlayerScripts/` 등 |
+| 공유 | `src/ReplicatedStorage/Shared/` |
+
+서버→클라 직접 참조 금지. 공유는 ReplicatedStorage 경유.
+
+## 금지
+
+- `src/` 없이 “Studio에서만 수정했다”는 전제로 레포와 불일치한 가정을 진실로 취급하기
+- **파일·폴더 이동 또는 이름 변경**을 사용자 승인된 플랜 없이 수행하기 — 상세는 `.cursor/rules/01-workflow.mdc` (플랜에 구 경로→신 경로 명시).
