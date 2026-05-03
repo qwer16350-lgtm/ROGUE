@@ -56,13 +56,16 @@ local function cloneMainHudToPlayerGui(playerGui): boolean
 end
 
 function StageClient.init()
+	print("[DEBUG StageClient] StageClient.init() entered")
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
 
 	if not cloneMainHudToPlayerGui(playerGui) then
+		print("[DEBUG StageClient] cloneMainHudToPlayerGui FAILED — VFXClient.init() will NOT run")
 		return
 	end
 
+	print("[DEBUG StageClient] cloneMainHudToPlayerGui OK — about to call VFXClient.init()")
 	HUDClient.init()
 	VFXClient.init()
 	LevelUpClient.init()

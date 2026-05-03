@@ -60,6 +60,7 @@ local function startStageBranch()
 	local WaveService = require(script.Parent:WaitForChild("WaveService"))
 	local CombatService = require(script.Parent:WaitForChild("CombatService"))
 	local ProgressionService = require(script.Parent:WaitForChild("ProgressionService"))
+	local WeaponDropService = require(script.Parent:WaitForChild("WeaponDropService"))
 	local XpPickupService = require(script.Parent:WaitForChild("XpPickupService"))
 	local HealthPickupService = require(script.Parent:WaitForChild("HealthPickupService"))
 	local HudSyncService = require(script.Parent:WaitForChild("HudSyncService"))
@@ -72,6 +73,7 @@ local function startStageBranch()
 	EnemyService.init(Players, RunService, GameConfig)
 	PlayerContactDamageService.init(Players, RunService, GameConfig, EnemyService)
 	ProgressionService.init(Players, ReplicatedStorage, GameConfig)
+	WeaponDropService.init(Players, RunService, Workspace, ProgressionService)
 	XpPickupService.init(Players, RunService, ProgressionService, GameConfig)
 	HealthPickupService.init(Players, RunService, GameConfig)
 	WaveService.init(Players, RunService, GameConfig, EnemyService, ProgressionService, XpPickupService)
@@ -89,17 +91,22 @@ local function startStageBranch()
 	end)
 	CombatService.init(
 		Players, RunService, GameConfig, EnemyService, ProgressionService,
-		XpPickupService, WaveService, HealthPickupService
+		XpPickupService, WaveService, HealthPickupService, WeaponDropService
 	)
 
 	-- 마지막에 StageBootstrap.init: RunContext init / StageFlow init / bindStageFlow /
-	-- MapService.GenerateMap / 멤버 :LoadCharacter() / WaveService.startSession 을 한 곳에서.
+	-- GenerateMap / LoadCharacter·StageSpawns 정렬 / WaveService.startSession 을 한 곳에서.
 	StageBootstrap.init({
 		players          = Players,
 		stageFlowRequest = Remotes:WaitForChild("StageFlowRequest"),
 		mapService       = MapService,
 		waveService      = WaveService,
+		gameConfig       = GameConfig,
 	})
+
+	for _, pl in Players:GetPlayers() do
+		ProgressionService.tryOfferStartingRelic(pl)
+	end
 
 	print(string.format("[MainServer] StagePlace started (placeId=%d)", placeId))
 end

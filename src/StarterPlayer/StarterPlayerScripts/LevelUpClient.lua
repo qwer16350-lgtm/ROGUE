@@ -68,7 +68,12 @@ function LevelUpClient.init()
 
 		local title = levelUpFrame:FindFirstChild("Title", true)
 		if title and title:IsA("TextLabel") then
-			title.Text = string.format("레벨 %d — 업그레이드 선택", level)
+			local customTitle = payload.Title
+			if type(customTitle) == "string" and customTitle ~= "" then
+				title.Text = customTitle
+			else
+				title.Text = string.format("레벨 %d — 업그레이드 선택", level)
+			end
 		end
 
 		for i, btnName in ipairs(OPTION_BUTTON_NAMES) do

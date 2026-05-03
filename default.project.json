@@ -10,16 +10,7 @@
         "$path": "src/ReplicatedStorage/Shared"
       },
       "VFX": {
-        "$className": "Folder",
-        "Hit": {
-          "$className": "Folder"
-        },
-        "Death": {
-          "$className": "Folder"
-        },
-        "Attack": {
-          "$className": "Folder"
-        }
+        "$path": "src/ReplicatedStorage/VFX.rbxm"
       },
       "Remotes": {
         "$className": "Folder",
@@ -36,6 +27,9 @@
           "$className": "RemoteEvent"
         },
         "BossHealthEvent": {
+          "$className": "RemoteEvent"
+        },
+        "WeaponPickupNotify": {
           "$className": "RemoteEvent"
         }
       }
@@ -54,6 +48,12 @@
       },
       "Lobby": {
         "$path": "src/Workspace/Lobby"
+      },
+      "StageSpawns": {
+        "$path": "src/Workspace/StageSpawns.rbxm"
+      },
+      "StageOrigins": {
+        "$path": "src/Workspace/StageOrigins.rbxm"
       }
     },
     "StarterGui": {

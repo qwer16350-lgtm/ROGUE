@@ -5,6 +5,13 @@ return {
 	SessionDurationSeconds = 180,
 
 	------------------------------------------------------------
+	-- Run (스테이지 런 단위 기본값 — 로비 무기 선택/TeleportData 연동 시 교체 예정)
+	------------------------------------------------------------
+	Run = {
+		DefaultWeaponId = "SwordShield",
+	},
+
+	------------------------------------------------------------
 	-- Player combat (baseline)
 	------------------------------------------------------------
 	PlayerBaseHealth = 100,
@@ -94,7 +101,25 @@ return {
 	XpRequiredPerLevelBase = 100,
 
 	------------------------------------------------------------
+	-- Weapon drops (SwordShield kill roll; 서버 전용)
+	------------------------------------------------------------
+	SwordShieldWeaponDropChance = 0.01,
+
+	------------------------------------------------------------
 	-- HUD sync interval
 	------------------------------------------------------------
 	HudSyncIntervalSeconds = 0.2,
+
+	------------------------------------------------------------
+	-- 개발용 디버그 (운영 기본값 false)
+	------------------------------------------------------------
+	Debug = {
+		ShowAttackRanges = false,
+		--- 0~1 이면 SwordShieldWeaponDropChance 대신 사용. 테스트용 0.2 / 1.0 등.
+		SwordShieldWeaponDropChanceOverride = nil,
+		--- "SwordShield" | "BasicMagic" 일 때만 무기 강제. nil 이면 Run.DefaultWeaponId.
+		OverrideWeaponId = nil,
+		--- true 일 때만 레벨업/승급 등 성공 print 출력.
+		ProgressionVerbose = false,
+	},
 }

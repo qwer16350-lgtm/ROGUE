@@ -18,6 +18,10 @@ if matchesPlace(placeId, RunConstants.LobbyPlaceId) then
 	print("[MainClient] branch=LobbyPlace placeId=", placeId)
 elseif matchesPlace(placeId, RunConstants.StagePlaceId) then
 	StageClient.init()
+	local CombatDebugClient = require(script.Parent:WaitForChild("CombatDebugClient"))
+	CombatDebugClient.init()
+	local PickupNotifyClient = require(script.Parent:WaitForChild("PickupNotifyClient"))
+	PickupNotifyClient.init()
 	print("[MainClient] branch=StagePlace placeId=", placeId)
 else
 	warn(
