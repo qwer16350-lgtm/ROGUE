@@ -1,8 +1,10 @@
-ROGUE — StarterGui 진실 소스 (Rojo)
+ROGUE — MainHUD 는 StarterGui 정본이 아님
 
-1) Studio에서 ScreenGui "MainHUD" 선택 → 우클릭 → Save to File → MainHUD.rbxmx 저장
-2) 이 파일을 같은 폴더에 두기: src/StarterGui/MainHUD.rbxmx
-3) MainHUD 안의 LocalScript는 삭제(로직은 StarterPlayerScripts의 HUDClient / LevelUpClient / MainClient만)
-4) 자식 이름은 docs/STRUCTURE_CLEANUP_PLAN.md の「5. MainHUD 하위 이름 점검표」와 동일하게 유지
+Stage 전투 HUD 템플릿은 ReplicatedStorage.UIAssets.Stage 에 둡니다.
 
-Rojo connect 전에 이 폴더가 완전 비어 있으면 StarterGui가 비워질 수 있으므로, rbxmx를 넣은 뒤 동기화할 것.
+1) Studio에서 MainHUD(ScreenGui) 선택 → Save to File
+2) 저장 경로(레포): src/ReplicatedStorage/UIAssets/Stage/MainHUD.rbxmx  (또는 .rbxm)
+3) 루트 이름 MainHUD / ScreenGui 권장. 하위 구조는 HUDClient·LevelUpClient 문서와 맞출 것.
+
+Rojo 동기화 후 StageClient 가 PlayerGui 로 Clone 한다.
+StarterGui 폴더에는 MainHUD 를 넣지 말 것(중복 방지).

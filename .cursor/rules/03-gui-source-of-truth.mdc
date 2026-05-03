@@ -1,28 +1,43 @@
----
-description: ROGUE StarterGui/MainHUD 진실 소스 — Rules(항시 운영 규칙). Agents/Skills 정의 아님
-alwaysApply: true
----
-
-# Rules: GUI 진실 소스 (ROGUE)
-
-**Rules** 범주. UI 절차형 점검은 Skill `gui-truth-source-check` 와 조합 가능하다.
-
-## 자산
-
-- ScreenGui 등 UI 자산은 **`src/StarterGui/`** 를 진실 소스로 한다 (`default.project.json` 의 StarterGui 매핑).
-- 런타임에는 PlayerGui로 복제되므로, **편집은 디스크 `StarterGui` 기준**으로 한다.
-
-## 로직
-
-- 클라이언트 UI 스크립트는 **`StarterPlayerScripts`** 내 (예: `HUDClient.lua`, `MainClient.client.lua`) 관용을 따른다.
-- 서버는 UI 트리를 직접 조작하지 않고, **RemoteEvent / 기존 HudState 패턴** 등으로 상태만 전달한다 (플랜에 별도 명시가 없으면 이 패턴 유지).
-
-### HUD와 도메인 로직 분리
-
-- **`HUDClient.lua`(및 동급 HUD 클라 스크립트)** 가 **LevelUp, 영구 성장, 보상 확정** 등의 **비즈니스 규칙을 “소유”하지 않는다.** UI는 표시·입력·클라이언트 피드백. 수치 권한·진행 판단은 서버 또는 `ReplicatedStorage/Shared` 의 정책 모듈(플랜·아키텍처 문서가 정한 위치)에 둔다.
-
-## 금지
-
-- Studio에서만 고친 GUI를 레포에 반영하지 않은 채 “완료”로 간주하기
-- 서버 스크립트에서 PlayerGui를 직접 찾아 하드코딩 조작하는 신규 패턴 (플랜에 명시된 경우 제외)
-- **Studio의 PlayerGui 런타임 상태만 상상하고** 디스크의 `src/StarterGui/`·연결 스크립트 없이 레포를 수정하기 — 편집은 **`src/StarterGui/`** 및 문서화된 클라 바인딩 기준.
+---
+description: ROGUE StarterGui / UIAssets 진실 소스 — Rules(항시 운영 규칙). Agents/Skills 정의 아님
+alwaysApply: true
+---
+
+# Rules: GUI 진실 소스 (ROGUE)
+
+**Rules** 범주. UI 절차형 점검은 Skill `gui-truth-source-check` 와 조합 가능하다.
+
+## 자산 위치
+
+### Stage 전투 HUD (`MainHUD`)
+
+- 진실 소스: **`src/ReplicatedStorage/UIAssets/Stage/MainHUD.rbxm`** 또는 **`MainHUD.rbxmx`** (`default.project.json` 의 `ReplicatedStorage.UIAssets.Stage` 경로).
+- 런타임: **`StageClient`** 가 템플릿을 **`PlayerGui`로 Clone** 후 `HUDClient` / `LevelUpClient` 등이 붙는다.
+- **`StarterGui`의 MainHUD 는 진실 소스가 아니다.** 안내만 `src/StarterGui/EXPORT_MAINHUD_HERE.txt` 에 둔다.
+
+### Lobby UI (`LobbyGui`)
+
+- 진실 소스(선택): **`src/ReplicatedStorage/UIAssets/Lobby/LobbyGui.rbxm`** 또는 **`LobbyGui.rbxmx`**.
+- 없을 때: **`LobbyClient`** 가 동일 네이밍 규칙의 폴백 UI를 생성한다.
+- 네이밍·연결 규칙: **`src/ReplicatedStorage/UIAssets/Lobby/README_LobbyGui_BUILD.md`** 참고.
+
+### 기타 StarterGui
+
+- `StarterGui` 에 두는 것은 **Lobby/Stage 공용으로 PlayerGui에 자동 복제돼야 하는 것만** (현재는 안내용 파일 위주). 새로 MainHUD 를 두지 않는다.
+
+## 로직
+
+- 클라이언트 UI 스크립트는 **`StarterPlayerScripts`** 내 (예: `HUDClient.lua`, `LobbyClient.lua`, `StageClient.lua`, `MainClient.client.lua`) 관용을 따른다.
+- 서버는 UI 트리를 직접 조작하지 않고, **RemoteEvent / 기존 HudState 패턴** 등으로 상태만 전달한다 (플랜에 별도 명시가 없으면 이 패턴 유지).
+
+### HUD와 도메인 로직 분리
+
+- **`HUDClient.lua`(및 동급 HUD 클라 스크립트)** 가 **LevelUp, 영구 성장, 보상 확정** 등의 **비즈니스 규칙을 “소유”하지 않는다.** UI는 표시·입력·클라이언트 피드백. 수치 권한·진행 판단은 서버 또는 `ReplicatedStorage/Shared` 의 정책 모듈(플랜·아키텍처 문서가 정한 위치)에 둔다.
+
+## 금지
+
+- Studio에서만 고친 GUI를 레포에 반영하지 않은 채 “완료”로 간주하기
+- 서버 스크립트에서 PlayerGui를 직접 찾아 하드코딩 조작하는 신규 패턴 (플랜에 명시된 경우 제외)
+- **`StarterGui`만 상정하고 `UIAssets`/클라 Clone 경로 없이** MainHUD 수정을 완료로 간주하기 — Stage HUD 템플릿은 **`UIAssets/Stage`** + `StageClient` 기준.
+
+

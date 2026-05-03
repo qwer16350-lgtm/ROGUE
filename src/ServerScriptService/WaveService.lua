@@ -87,6 +87,13 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 		resultEvent.Parent = ReplicatedStorage
 	end
 
+	local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
+	local bossHealthEvent = remotesFolder:WaitForChild("BossHealthEvent") :: RemoteEvent
+
+	local function fireBossBarHide()
+		bossHealthEvent:FireAllClients({ Phase = "Hide" })
+	end
+
 	local function buildUpgradesPayload(upgradeCounts)
 		local list = {}
 		for id, count in pairs(upgradeCounts) do
@@ -158,6 +165,7 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 		if not sess.active then
 			return
 		end
+		fireBossBarHide()
 		sess.active = false
 
 		local elapsed = tick() - sess.startTime
@@ -258,6 +266,17 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 			sess.bossSpawned = true
 			if not sess.bossPart then
 				finishSession(false)
+			else
+				local bp = sess.bossPart
+				local mh = tonumber(bp:GetAttribute("MaxHealth"))
+				local ch = tonumber(bp:GetAttribute("Health"))
+				local maxInt = mh ~= nil and math.max(1, math.floor(mh :: number + 0.5)) or 1
+				local curInt = ch ~= nil and math.max(0, math.floor(ch :: number + 0.5)) or maxInt
+				bossHealthEvent:FireAllClients({
+					Phase = "Show",
+					Current = curInt,
+					Max = maxInt,
+				})
 			end
 			return
 		end

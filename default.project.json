@@ -3,6 +3,9 @@
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
+      "UIAssets": {
+        "$path": "src/ReplicatedStorage/UIAssets"
+      },
       "Shared": {
         "$path": "src/ReplicatedStorage/Shared"
       },
@@ -27,6 +30,12 @@
           "$className": "RemoteEvent"
         },
         "LobbyEnterRequest": {
+          "$className": "RemoteEvent"
+        },
+        "DamageNumberEvent": {
+          "$className": "RemoteEvent"
+        },
+        "BossHealthEvent": {
           "$className": "RemoteEvent"
         }
       }

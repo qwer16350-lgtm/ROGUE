@@ -119,10 +119,15 @@ function EnemyService.spawnBoss(gameConfig)
 		+ Vector3.new(math.cos(angle) * dist, y, math.sin(angle) * dist)
 	part.Parent = enemiesFolderRef
 
+	local maxHp = gameConfig.EnemyBaseHealth * gameConfig.EnemyBossHealthMultiplier
+	part:SetAttribute("IsBoss", true)
+	part:SetAttribute("MaxHealth", maxHp)
+	part:SetAttribute("Health", maxHp)
+
 	table.insert(enemyEntriesRef, {
 		part = part,
 		state = {
-			health = gameConfig.EnemyBaseHealth * gameConfig.EnemyBossHealthMultiplier,
+			health = maxHp,
 			isBoss = true,
 			spawnY = y,
 			tier = EnemyTier.Boss,

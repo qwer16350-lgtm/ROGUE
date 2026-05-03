@@ -11,6 +11,7 @@
 | 플레이 검증 | **`docs/VERIFICATION_PLAYTEST.md`** | 변경 유형별 Studio 플레이테스트 체크리스트(§1 서버 / §2 HUD / §3 전투·성장). |
 | 사람용 부록 | **`ROBLOX_RULES.md`** | Rojo·Git·폴더 치트시트. **규범은 아래 Rules에 위임** — 중복 규칙 장문 없음. |
 | 런타임 설명 | **`docs/PROJECT_ARCHITECTURE.md`** | 서비스·전투·HUD 흐름. |
+| 층 전환·상태 스코프 | **`docs/STAGE_FLOOR_TRANSITION_AND_SCOPE.md`** | V1 reserved 텔포트 재진입, StageFlow 허용·거부 경계, floor/run 스코프·신규 상태 판별 규칙(SSOT). |
 
 **플랜 → 명시 승인 → 구현** 등 저장소 수정 게이트의 규범 문장은 **`.cursor/rules/01-workflow.mdc`** 가 단일 근거다. **가장 짧은 항시 요약**은 **`.cursor/rules/00-priority-always.mdc`** — 루트 **`.cursorrules`** 도 같은 힌트를 한 번 더 준다. `CURSOR_WORKFLOW.md`는 이를 반복하지 않고 링크만 한다.
 

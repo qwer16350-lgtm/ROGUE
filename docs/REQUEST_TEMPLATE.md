@@ -19,6 +19,8 @@
 - **성공 기준** — 무엇이 되면 완료인지.
 - **테스트 기준** — Studio 재현·기대 결과. read-only면 “해당 없음” 또는 검증 방법.
 
+- **상태 스코프** — 새 기능·서버 상태·복제값·표시 규칙 추가 시 **`docs/STAGE_FLOOR_TRANSITION_AND_SCOPE.md`** 기준으로 **floor-scoped 인지 run-scoped 인지** 한 줄 명시한다.
+
 Planner 출력 형식은 `.cursor/agents/planner.md` 의 **`## PLAN`** 과 맞추면 이후 단계와 호환된다.
 
 ---

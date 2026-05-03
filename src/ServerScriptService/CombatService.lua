@@ -8,6 +8,38 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local vfxEvent = remotes:WaitForChild("VFXEvent")
+	local damageNumberEvent = remotes:WaitForChild("DamageNumberEvent") :: RemoteEvent
+	local bossHealthEvent = remotes:WaitForChild("BossHealthEvent") :: RemoteEvent
+
+	local function damageFloatingWorldPosition(part: BasePart): Vector3
+		return (part.CFrame * CFrame.new(0, part.Size.Y * 0.5 + 1.5, 0)).Position
+	end
+
+	local function pushBossHealthBar(part: BasePart?)
+		if not part or not part.Parent then
+			return
+		end
+		local mxAttr = tonumber(part:GetAttribute("MaxHealth"))
+		local mx = mxAttr ~= nil and math.max(1, math.floor(mxAttr :: number + 0.5)) or 1
+		local curAttr = tonumber(part:GetAttribute("Health"))
+		local cur = curAttr ~= nil and math.floor((curAttr :: number) + 0.5) or mx
+		if cur < 0 then
+			cur = 0
+		end
+		bossHealthEvent:FireAllClients({
+			Phase = "Update",
+			Current = cur,
+			Max = mx,
+		})
+	end
+
+	local function pushDamageNumber(dmg: number, part: BasePart)
+		local pos = damageFloatingWorldPosition(part)
+		damageNumberEvent:FireAllClients({
+			Amount = math.floor(dmg + 0.5),
+			WorldPosition = pos,
+		})
+	end
 
 	local function fireVfx(effectType, position, hitPart, attackRadiusStuds, attackerUserId, attackCooldownSeconds)
 		local payload = {
@@ -103,6 +135,14 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 				local hitPos = part.Position
 
 				entry.state.health -= damage
+
+				pushDamageNumber(damage, part)
+
+				if entry.state.isBoss and part.Parent then
+					part:SetAttribute("Health", math.max(0, entry.state.health))
+					pushBossHealthBar(part)
+				end
+
 				if entry.state.health <= 0 then
 					fireVfx("death", hitPos)
 					waveService.recordKill()

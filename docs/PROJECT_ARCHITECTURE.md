@@ -25,6 +25,12 @@ Rojo 레포(`src` + `default.project.json`) 기준 정리.
 - **클라:** `ResultClient` — `SessionResult`의 `CanAdvance`일 때만 “다음 층” 활성 → `{ Action = "NextStage" }` 전송; “나가기”는 `{ Action = "Exit" }`.
 - **성장:** `ProgressionService`는 층 전환 시 초기화하지 않음.
 
+### Run / Stage floor transition (층 전환 요약)
+
+- **V1:** 다음 층 진행 요청은 **`StageFlow`** 쪽에서 허용/거부를 판별한 뒤, **`Teleport.toFloor`** 로 **동일 Stage Place의 새 reserved 서버**에 재진입하는 방식이다.
+- **같은 서버 인스턴스 안에서만** 층을 바꾸는 전환은 **현재 비목표**이며, 실제 이동은 향후 전환 서비스로 빼내는 교체 가능성만 열어 둔다.
+- 자세한 규칙(SSOT): **`docs/STAGE_FLOOR_TRANSITION_AND_SCOPE.md`**.
+
 ---
 
 ## 2. 서버 부팅 순서 (`MainServer.server.lua`)
