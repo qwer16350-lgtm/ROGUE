@@ -15,6 +15,15 @@ alwaysApply: true
 4. **코드·프로젝트 트리 정본** → 디스크 **`src/`** + **`default.project.json`** (`02-roblox-boundaries.mdc`).
 5. **GUI 자산 정본** → **`src/StarterGui/`** ; PlayerGui 런타임만 보고 레포를 바꾸지 않음 (`03-gui-source-of-truth.mdc`).
 
+## 실행 원칙 (단순·수술적 변경)
+
+위 항목 **1–3**(플랜·승인·`APPROVE_PATCH`/patch gate·`01-workflow`)은 그대로 최우선이다. 그 다음 실무 우선순위는 아래 네 가지로 묶는다.
+
+- **Simplicity First:** 필요한 최소 구조·최소 분기만. 보편 패턴 이름만으로 레포를 복잡하게 만들지 않는다.
+- **Surgical Changes:** 한 목적에 대한 국소 패치. 무관 라인·무관 파일을 건드리지 않는다.
+- **Goal-Driven Execution:** 사용자 목표와 PLAN의 Goal에서 벗어난 “추가 개선”은 하지 않는다.
+- **Think Before Coding:** 도구·패치 전에 범위·파일·실패 시 롤백을 한 번 더 짚는다 (플랜 단계에서 명시).
+
 ## 하지 말 것 (한 줄)
 
 - 플랜·승인 없이 `src/` 수정 · 플랜과 패치 동시 출력 · Studio-only 스크립트를 정본으로 취급 · HUD가 서버 권한 로직 소유 · 승인 없는 경로 이동·리네임.

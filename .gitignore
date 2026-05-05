@@ -8,3 +8,4 @@ sourcemap.json
 .cursor/.patch_gate_allow
 .cursor/.daily_workflow_state.json
 .cursor/hooks-debug.log
+.cursor/task-state/current-plan.json
