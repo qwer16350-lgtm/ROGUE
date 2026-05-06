@@ -52,13 +52,21 @@ function LevelUpClient.init()
 				if type(id) ~= "string" or id == "" then
 					return
 				end
+				print("[LevelUpClient][SUBMIT]", tostring(id))
 				submitEvent:FireServer(id)
+				print("[LevelUpClient][CLOSE]")
 				levelUpFrame.Visible = false
 			end)
 		end
 	end
 
 	requestEvent.OnClientEvent:Connect(function(payload)
+		print(
+			"[LevelUpClient][REQUEST]",
+			"kind", tostring(payload and payload.ChoiceKind),
+			"level", tostring(payload and payload.Level),
+			"choices", (type(payload) == "table" and payload.Choices) and #payload.Choices or "nil"
+		)
 		if type(payload) ~= "table" then
 			return
 		end
@@ -91,7 +99,7 @@ function LevelUpClient.init()
 				end
 			end
 		end
-
+		print("[LevelUpClient][OPEN]", tostring(payload.ChoiceKind), tostring(payload.Level))
 		levelUpFrame.Visible = true
 	end)
 end

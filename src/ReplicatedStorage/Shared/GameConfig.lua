@@ -104,6 +104,7 @@ return {
 	-- Weapon drops (SwordShield kill roll; 서버 전용)
 	------------------------------------------------------------
 	SwordShieldWeaponDropChance = 0.01,
+	SwordShieldRelicChestDropChance = 0.005,
 
 	------------------------------------------------------------
 	-- HUD sync interval
@@ -114,9 +115,13 @@ return {
 	-- 개발용 디버그 (운영 기본값 false)
 	------------------------------------------------------------
 	Debug = {
-		ShowAttackRanges = false,
+		--- 개발용: HudState.DevCombat + HUDClient 코드 Dev 패널 (밸런스 확인용).
+		ShowDevCombatPanel = true,
+		ShowAttackRanges = true,
 		--- 0~1 이면 SwordShieldWeaponDropChance 대신 사용. 테스트용 0.2 / 1.0 등.
 		SwordShieldWeaponDropChanceOverride = nil,
+		--- 0~1 이면 SwordShieldRelicChestDropChance 대신 사용. 테스트용 0.2 / 1.0 등.
+		RelicChestDropChanceOverride = nil,
 		--- "SwordShield" | "BasicMagic" 일 때만 무기 강제. nil 이면 Run.DefaultWeaponId.
 		OverrideWeaponId = nil,
 		--- true 일 때만 레벨업/승급 등 성공 print 출력.

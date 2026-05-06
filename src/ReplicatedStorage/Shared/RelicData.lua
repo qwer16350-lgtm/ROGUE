@@ -50,9 +50,78 @@ local DROPPED_DEFINITIONS = {
 		ThrustDamageMul = 1,
 		AttackIntervalMul = 0.90,
 	},
+	shield_spike = {
+		Id = "shield_spike",
+		Label = "Shield Spike",
+		SweepDamageMul = 1,
+		ThrustDamageMul = 1,
+		AttackIntervalMul = 1,
+		Effect = {
+			sweepKnockback = true,
+			knockbackDistance = 10,
+			knockbackForce = 60,
+		},
+	},
 }
 
-local DROPPED_OFFER_IDS = { "reinforced_shield_rim", "needle_edge", "rhythm_strap" }
+local DROPPED_OFFER_IDS = { "reinforced_shield_rim", "needle_edge", "rhythm_strap", "shield_spike" }
+
+-- Dropped Relic offer weight: 슬롯별 "샘플링 가중치" (최종 등장 확률이 아님).
+-- 예) 4종 모두 weight=25이고, 중복 없이 3개를 뽑으면 각 relic이 3택에 포함될 확률은 대략 75%.
+local DROPPED_OFFER_WEIGHTS = {
+	reinforced_shield_rim = 25,
+	needle_edge = 25,
+	rhythm_strap = 25,
+	shield_spike = 25,
+}
+
+local function pickWeightedWithoutReplacement(
+	ids: { string },
+	weightsById: { [string]: number },
+	k: number
+): { string }
+	local pool = {}
+	for _, id in ipairs(ids) do
+		if type(id) == "string" then
+			table.insert(pool, id)
+		end
+	end
+
+	local out = {}
+	k = math.max(0, math.floor(k or 0))
+	while #out < k and #pool > 0 do
+		local total = 0
+		for _, id in ipairs(pool) do
+			local w = weightsById[id]
+			if type(w) ~= "number" or w <= 0 then
+				w = 1
+			end
+			total += w
+		end
+		if total <= 0 then
+			break
+		end
+		local r = math.random() * total
+		local pickIndex = nil
+		for i, id in ipairs(pool) do
+			local w = weightsById[id]
+			if type(w) ~= "number" or w <= 0 then
+				w = 1
+			end
+			r -= w
+			if r <= 0 then
+				pickIndex = i
+				break
+			end
+		end
+		if not pickIndex then
+			pickIndex = #pool
+		end
+		table.insert(out, pool[pickIndex])
+		table.remove(pool, pickIndex)
+	end
+	return out
+end
 
 local function onesMul(): { SweepDamageMul: number, ThrustDamageMul: number, AttackIntervalMul: number }
 	return {
@@ -113,13 +182,32 @@ end
 
 function RelicData.getDroppedRelicChoices(): { { Id: string, Label: string } }
 	local out = {}
-	for _, id in ipairs(DROPPED_OFFER_IDS) do
+	local pickedIds = pickWeightedWithoutReplacement(DROPPED_OFFER_IDS, DROPPED_OFFER_WEIGHTS, 3)
+	if #pickedIds <= 0 then
+		pickedIds = DROPPED_OFFER_IDS
+	end
+	for _, id in ipairs(pickedIds) do
 		local def = DROPPED_DEFINITIONS[id]
 		if def then
 			table.insert(out, { Id = def.Id, Label = def.Label })
 		end
 	end
 	return out
+end
+
+function RelicData.getDroppedRelicEffect(droppedRelicId: string?): any
+	if type(droppedRelicId) ~= "string" then
+		return nil
+	end
+	local d = DROPPED_DEFINITIONS[droppedRelicId]
+	if type(d) ~= "table" then
+		return nil
+	end
+	local eff = d.Effect
+	if type(eff) ~= "table" then
+		return nil
+	end
+	return eff
 end
 
 --- Starting + Dropped 유물 배율을 곱해 반환. nil/알 수 없는 id 는 1.0.

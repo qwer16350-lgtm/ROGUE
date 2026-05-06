@@ -61,6 +61,7 @@ local function startStageBranch()
 	local CombatService = require(script.Parent:WaitForChild("CombatService"))
 	local ProgressionService = require(script.Parent:WaitForChild("ProgressionService"))
 	local WeaponDropService = require(script.Parent:WaitForChild("WeaponDropService"))
+	local RelicDropService = require(script.Parent:WaitForChild("RelicDropService"))
 	local XpPickupService = require(script.Parent:WaitForChild("XpPickupService"))
 	local HealthPickupService = require(script.Parent:WaitForChild("HealthPickupService"))
 	local HudSyncService = require(script.Parent:WaitForChild("HudSyncService"))
@@ -74,6 +75,7 @@ local function startStageBranch()
 	PlayerContactDamageService.init(Players, RunService, GameConfig, EnemyService)
 	ProgressionService.init(Players, ReplicatedStorage, GameConfig)
 	WeaponDropService.init(Players, RunService, Workspace, ProgressionService)
+	RelicDropService.init(Players, RunService, Workspace, ProgressionService)
 	XpPickupService.init(Players, RunService, ProgressionService, GameConfig)
 	HealthPickupService.init(Players, RunService, GameConfig)
 	WaveService.init(Players, RunService, GameConfig, EnemyService, ProgressionService, XpPickupService)
@@ -91,7 +93,7 @@ local function startStageBranch()
 	end)
 	CombatService.init(
 		Players, RunService, GameConfig, EnemyService, ProgressionService,
-		XpPickupService, WaveService, HealthPickupService, WeaponDropService
+		XpPickupService, WaveService, HealthPickupService, WeaponDropService, RelicDropService
 	)
 
 	-- 마지막에 StageBootstrap.init: RunContext init / StageFlow init / bindStageFlow /

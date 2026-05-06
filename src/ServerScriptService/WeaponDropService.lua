@@ -6,6 +6,12 @@ local DROP_KIND = "Weapon"
 local DROP_WEAPON_ID = "SwordShield"
 local PICKUP_RADIUS_STUDS = 4
 local DROP_PART_SIZE = Vector3.new(2.75, 2.75, 2.75)
+-- 테스트 편의용 후보 가중치(초기값). 밸런스 단계에서 조정 예정.
+local WEAPON_DROP_CANDIDATES = {
+	{ weaponId = "SwordShield", weight = 40 },
+	{ weaponId = "Spear", weight = 30 },
+	{ weaponId = "TwoHandedSword", weight = 30 },
+}
 
 type ProgressionApi = {
 	tryApplyWeaponDropPickup: (Player, string) -> boolean,
@@ -96,10 +102,47 @@ function WeaponDropService.init(players, runService, workspace: Workspace, progr
 	end)
 end
 
+local function pickDropWeaponId(): string
+	local total = 0
+	for _, c in ipairs(WEAPON_DROP_CANDIDATES) do
+		if type(c) == "table" and type(c.weaponId) == "string" then
+			local w = c.weight
+			if type(w) ~= "number" or w <= 0 then
+				w = 1
+			end
+			total += w
+		end
+	end
+	if total <= 0 then
+		return "SwordShield"
+	end
+	local r = math.random() * total
+	for _, c in ipairs(WEAPON_DROP_CANDIDATES) do
+		if type(c) == "table" and type(c.weaponId) == "string" then
+			local w = c.weight
+			if type(w) ~= "number" or w <= 0 then
+				w = 1
+			end
+			r -= w
+			if r <= 0 then
+				return c.weaponId
+			end
+		end
+	end
+	return "SwordShield"
+end
+
+function WeaponDropService.pickDropWeaponId(): string
+	return pickDropWeaponId()
+end
+
 --- 적 사망 위치 등 월드 좌표에 드롭 1개 생성. 킬을 낸 플레이어만 획득 가능.
-function WeaponDropService.spawnSwordShieldDropAt(worldPosition: Vector3, boundPlayer: Player)
+function WeaponDropService.spawnWeaponDropAt(worldPosition: Vector3, boundPlayer: Player, weaponId: string)
 	if typeof(boundPlayer) ~= "Instance" or not boundPlayer:IsA("Player") then
 		return
+	end
+	if type(weaponId) ~= "string" or weaponId == "" then
+		weaponId = DROP_WEAPON_ID
 	end
 
 	local workspace = game:GetService("Workspace")
@@ -107,7 +150,7 @@ function WeaponDropService.spawnSwordShieldDropAt(worldPosition: Vector3, boundP
 	local pos = worldPosition + Vector3.new(0, 1, 0)
 
 	local part = Instance.new("Part")
-	part.Name = "WeaponDrop_SwordShield"
+	part.Name = "WeaponDrop_" .. weaponId
 	part.Size = DROP_PART_SIZE
 	part.Shape = Enum.PartType.Ball
 	part.Anchored = true
@@ -118,7 +161,7 @@ function WeaponDropService.spawnSwordShieldDropAt(worldPosition: Vector3, boundP
 	part.Color = Color3.fromRGB(255, 220, 40)
 	part.CFrame = CFrame.new(pos)
 	part:SetAttribute("DropKind", DROP_KIND)
-	part:SetAttribute("WeaponId", DROP_WEAPON_ID)
+	part:SetAttribute("WeaponId", weaponId)
 	part:SetAttribute("BoundUserId", boundPlayer.UserId)
 
 	local light = Instance.new("PointLight")
@@ -139,6 +182,10 @@ function WeaponDropService.spawnSwordShieldDropAt(worldPosition: Vector3, boundP
 
 	part.Parent = dropsFolder
 	table.insert(activeWeaponDrops, part)
+end
+
+function WeaponDropService.spawnSwordShieldDropAt(worldPosition: Vector3, boundPlayer: Player)
+	return WeaponDropService.spawnWeaponDropAt(worldPosition, boundPlayer, "SwordShield")
 end
 
 return WeaponDropService

@@ -6,6 +6,153 @@ local StarterGui = game:GetService("StarterGui")
 
 local HUDClient = {}
 
+local SS_KEYS_ORDERED = {
+	"ss_common_damage",
+	"ss_common_cooldown",
+	"ss_sweep_angle",
+	"ss_sweep_damage",
+	"ss_sweep_range",
+	"ss_thrust_damage",
+	"ss_thrust_range",
+}
+
+local function strRelic(id)
+	if id == nil or id == "" then
+		return "-"
+	end
+	return tostring(id)
+end
+
+local function fmtDevNum(v)
+	if type(v) ~= "number" then
+		return "-"
+	end
+	return string.format("%.4g", v)
+end
+
+local function fmtDevScalar(v)
+	if v == nil then
+		return "-"
+	end
+	return tostring(v)
+end
+
+local function formatSsUpgrade(v)
+	if type(v) == "number" then
+		return tostring(math.max(0, math.floor(v + 0.5)))
+	end
+	return "-"
+end
+
+local function formatDevCombat(dc)
+	if type(dc) ~= "table" then
+		return "[DevCombat]\n(invalid)"
+	end
+	local lines = {}
+	table.insert(lines, "[DevCombat]")
+	table.insert(lines, string.format("WeaponId: %s", fmtDevScalar(dc.WeaponId)))
+	table.insert(lines, string.format("WeaponGrade: %s", dc.WeaponGrade ~= nil and tostring(dc.WeaponGrade) or "-"))
+	local aw = dc.ActiveWeapons
+	if type(aw) == "table" and #aw > 0 then
+		local chunks = {}
+		for _, it in ipairs(aw) do
+			if type(it) == "table" then
+				local wid = fmtDevScalar(it.WeaponId)
+				local grade = fmtDevScalar(it.Grade)
+				table.insert(chunks, string.format("%s(%s)", wid, grade))
+			end
+		end
+		if #chunks > 0 then
+			table.insert(lines, string.format("ActiveWeapons: %s", table.concat(chunks, ", ")))
+		end
+	end
+	local weaponId = dc.WeaponId
+	local isBasic = weaponId == "BasicMagic"
+	local isSword = weaponId == "SwordShield"
+	if isBasic then
+		table.insert(lines, "(BasicMagic 런 — 유물 미표시)")
+		table.insert(lines, "StartingRelicId: -")
+		table.insert(lines, "DroppedRelicId: -")
+	else
+		table.insert(lines, string.format("StartingRelicId: %s", strRelic(dc.StartingRelicId)))
+		table.insert(lines, string.format("DroppedRelicId: %s", strRelic(dc.DroppedRelicId)))
+	end
+	table.insert(lines, "--- upgrades (ss_*) ---")
+	for _, k in ipairs(SS_KEYS_ORDERED) do
+		table.insert(lines, string.format("%s: %s", k, formatSsUpgrade(dc[k])))
+	end
+	if isSword and type(dc.SwordShieldEffective) == "table" then
+		local eff = dc.SwordShieldEffective
+		table.insert(lines, "--- SwordShieldEffective ---")
+		table.insert(lines, string.format("AttackIntervalSeconds: %s", fmtDevNum(eff.AttackIntervalSeconds)))
+		local sw = eff.Sweep
+		if type(sw) == "table" then
+			table.insert(lines, string.format("Sweep.BaseDamage: %s", fmtDevNum(sw.BaseDamage)))
+			table.insert(lines, string.format("Sweep.RangeStuds: %s", fmtDevNum(sw.RangeStuds)))
+			table.insert(lines, string.format("Sweep.AngleDeg: %s", fmtDevNum(sw.AngleDeg)))
+		end
+		local th = eff.Thrust
+		if type(th) == "table" then
+			table.insert(lines, string.format("Thrust.BaseDamage: %s", fmtDevNum(th.BaseDamage)))
+			table.insert(lines, string.format("Thrust.RangeStuds: %s", fmtDevNum(th.RangeStuds)))
+			table.insert(lines, string.format("Thrust.WidthStuds: %s", fmtDevNum(th.WidthStuds)))
+		end
+		table.insert(lines, "BasicMagicEffective: --")
+	elseif type(dc.BasicMagicEffective) == "table" then
+		local bm = dc.BasicMagicEffective
+		table.insert(lines, "--- BasicMagicEffective ---")
+		table.insert(lines, string.format("damagePerHit: %s", fmtDevNum(bm.damagePerHit)))
+		table.insert(lines, string.format("attackIntervalSeconds: %s", fmtDevNum(bm.attackIntervalSeconds)))
+		table.insert(lines, string.format("attackRangeStuds: %s", fmtDevNum(bm.attackRangeStuds)))
+		table.insert(lines, "SwordShieldEffective: --")
+		table.insert(lines, "SpearEffective: --")
+	elseif type(dc.SpearEffective) == "table" then
+		local sp = dc.SpearEffective
+		table.insert(lines, "--- SpearEffective ---")
+		table.insert(lines, string.format("Grade: %s", fmtDevScalar(sp.Grade)))
+		table.insert(lines, string.format("BaseDamage: %s", fmtDevNum(sp.BaseDamage)))
+		table.insert(lines, string.format("AttackIntervalSeconds: %s", fmtDevNum(sp.AttackIntervalSeconds)))
+		table.insert(lines, string.format("RangeStuds: %s", fmtDevNum(sp.RangeStuds)))
+		table.insert(lines, string.format("WidthStuds: %s", fmtDevNum(sp.WidthStuds)))
+		table.insert(lines, string.format("TargetLimit: %s", fmtDevNum(sp.TargetLimit)))
+		table.insert(lines, string.format("sp_thrust_damage: %s", formatSsUpgrade(sp.sp_thrust_damage)))
+		table.insert(lines, string.format("sp_thrust_range: %s", formatSsUpgrade(sp.sp_thrust_range)))
+		table.insert(lines, "SwordShieldEffective: --")
+		table.insert(lines, "BasicMagicEffective: --")
+		table.insert(lines, "TwoHandedSwordEffective: --")
+	elseif type(dc.TwoHandedSwordEffective) == "table" then
+		local tw = dc.TwoHandedSwordEffective
+		table.insert(lines, "--- TwoHandedSwordEffective ---")
+		table.insert(lines, string.format("BaseDamage: %s", fmtDevNum(tw.BaseDamage)))
+		table.insert(lines, string.format("AttackIntervalSeconds: %s", fmtDevNum(tw.AttackIntervalSeconds)))
+		table.insert(lines, string.format("RangeStuds: %s", fmtDevNum(tw.RangeStuds)))
+		table.insert(lines, string.format("AngleDeg: %s", fmtDevNum(tw.AngleDeg)))
+		table.insert(lines, string.format("TargetLimit: %s", fmtDevNum(tw.TargetLimit)))
+		table.insert(lines, "SwordShieldEffective: --")
+		table.insert(lines, "BasicMagicEffective: --")
+		table.insert(lines, "SpearEffective: --")
+	else
+		table.insert(lines, "SwordShieldEffective: --")
+		table.insert(lines, "BasicMagicEffective: --")
+		table.insert(lines, "SpearEffective: --")
+		table.insert(lines, "TwoHandedSwordEffective: --")
+	end
+	local runInfo = dc.Run
+	if type(runInfo) == "table" then
+		table.insert(lines, "--- Run ---")
+		table.insert(lines, string.format("DefaultWeaponId: %s", fmtDevScalar(runInfo.DefaultWeaponId)))
+	end
+	local dbgInfo = dc.Debug
+	if type(dbgInfo) == "table" then
+		table.insert(lines, "--- Debug ---")
+		table.insert(lines, string.format("OverrideWeaponId: %s", fmtDevScalar(dbgInfo.OverrideWeaponId)))
+		table.insert(lines, string.format("ShowAttackRanges: %s", fmtDevScalar(dbgInfo.ShowAttackRanges)))
+		table.insert(lines, string.format("ShowDevCombatPanel: %s", fmtDevScalar(dbgInfo.ShowDevCombatPanel)))
+	end
+	table.insert(lines, string.format("SwordShieldWeaponDropChance: %s", fmtDevScalar(dc.SwordShieldWeaponDropChance)))
+	table.insert(lines, string.format("SwordShieldWeaponDropChanceOverride: %s", fmtDevScalar(dc.SwordShieldWeaponDropChanceOverride)))
+	return table.concat(lines, "\n")
+end
 
 local HEALTH_LERP_SPEED_DOWN = 5
 local HEALTH_LERP_SPEED_UP = 2
@@ -65,135 +212,13 @@ local function waitForChildTimeout(parent, name, timeoutSec)
 	return parent:FindFirstChild(name)
 end
 
+local HUDSTATE_WAIT_TIMEOUT_SEC = 60
+
 function HUDClient.init()
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
 
-	local mainHUD = waitForChildTimeout(playerGui, "MainHUD", 60)
-	if not mainHUD then
-		warn("[HUDClient] MainHUD 가 PlayerGui 에 없습니다.")
-		return
-	end
-
-	local hudFrame = waitForChildTimeout(mainHUD, "HUDFrame", 60)
-	if not hudFrame then
-		warn("[HUDClient] HUDFrame 없음 — 레벨/XP 표시 비활성.")
-	end
-
-	local levelLabel = hudFrame and hudFrame:FindFirstChild("LevelLabel", true)
-	local xpLabel = hudFrame and hudFrame:FindFirstChild("XPLabel", true)
-	local xpBarBg = hudFrame and hudFrame:FindFirstChild("XPBarBG", true)
-	local healthLabel = hudFrame and hudFrame:FindFirstChild("HealthLabel", true)
-	local healthBarBg = hudFrame and hudFrame:FindFirstChild("HealthBarBG", true)
-	if hudFrame and not healthLabel then
-		warn("[HUDClient] HealthLabel 을 HUDFrame 아래에서 찾지 못했습니다. 이름·부모 구조를 확인하세요.")
-	end
-
-	local timerBarRoot = waitForChildTimeout(mainHUD, "TimerBarRoot", 60)
-	if not timerBarRoot then
-		warn("[HUDClient] TimerBarRoot 없음 — 타이머 표시 비활성.")
-	end
-	local timerLabel = timerBarRoot and timerBarRoot:FindFirstChild("TimerLabel", true)
-	local timerBarBg = timerBarRoot and timerBarRoot:FindFirstChild("TimerBarBG", true)
-	local stageLabel = timerBarRoot and timerBarRoot:FindFirstChild("StageLabel", true)
-
-	local hudEvent = ReplicatedStorage:WaitForChild("HudState")
-
-	-- ---- 표시/목표 상태 (Humanoid) ----
-	local targetHealth = 0
-	local targetMaxHealth = 1
-	local targetHealthRatio = 0
-	local displayedHealthRatio = 0
-	local displayedHealthNumber = 0
-
-	local function applyHealthTargetsFromHumanoid(humanoid)
-		local hp = humanoid.Health
-		local maxHp = humanoid.MaxHealth > 0 and humanoid.MaxHealth or 1
-		targetHealth = hp
-		targetMaxHealth = maxHp
-		targetHealthRatio = clamp01(hp / maxHp)
-	end
-
-	-- ---- 표시/목표 상태 (HudState) ----
-	local hudTargetLevel = 1
-	local hudTargetXp = 0
-	local hudTargetXpToNext = 1
-	local hudTargetXpRatio = 0
-	local displayedXpRatio = 0
-	local lastHudLevelSeen = 1
-	local xpPhase = "normal"
-
-	local hudSessionActive = true
-	local hudSessionLength = 300
-	local hudStageIndex = 1
-	local timerAnchorTick = 0
-	local timerAnchorRemaining = 0
-	local displayedTimerRemaining = 0
-
-	local hudDataInitialized = false
-
-	local function recomputeTimerTargetRemaining()
-		if not hudSessionActive then
-			return 0
-		end
-		return math.max(0, timerAnchorRemaining - (tick() - timerAnchorTick))
-	end
-
-	local function ingestHudPayload(payload)
-		hudTargetLevel = payload.Level or 1
-		hudTargetXp = payload.Xp or 0
-		hudTargetXpToNext = math.max(1, payload.XpToNext or 1)
-		hudSessionActive = payload.SessionActive ~= false
-		hudSessionLength = math.max(1, payload.SessionLengthSeconds or 300)
-		hudStageIndex = math.max(1, payload.StageIndex or 1)
-
-		local newRatio = hudTargetXp / hudTargetXpToNext
-		hudTargetXpRatio = clamp01(newRatio)
-
-		timerAnchorTick = tick()
-		timerAnchorRemaining = math.max(0, payload.SecondsLeft or 0)
-
-		if not hudDataInitialized then
-			displayedXpRatio = hudTargetXpRatio
-			lastHudLevelSeen = hudTargetLevel
-			xpPhase = "normal"
-			displayedTimerRemaining = timerAnchorRemaining
-			hudDataInitialized = true
-		else
-			if hudTargetLevel > lastHudLevelSeen then
-				xpPhase = "fillToFull"
-				lastHudLevelSeen = hudTargetLevel
-			elseif hudTargetLevel < lastHudLevelSeen then
-				lastHudLevelSeen = hudTargetLevel
-				xpPhase = "normal"
-				displayedXpRatio = hudTargetXpRatio
-			end
-		end
-
-		if levelLabel and levelLabel:IsA("TextLabel") then
-			levelLabel.Text = string.format("레벨 %d", hudTargetLevel)
-		end
-		if xpLabel and xpLabel:IsA("TextLabel") then
-			xpLabel.Text = string.format("XP %d / %d", hudTargetXp, hudTargetXpToNext)
-		end
-		if timerLabel and timerLabel:IsA("TextLabel") then
-			if hudSessionActive then
-				timerLabel.Text = string.format("남은 시간 %s", formatTimeSmooth(displayedTimerRemaining))
-			else
-				timerLabel.Text = "세션 종료"
-			end
-		end
-		if stageLabel and stageLabel:IsA("TextLabel") then
-			stageLabel.Text = string.format("Stage %d", hudStageIndex)
-		end
-
-		setBarRatio(healthBarBg, displayedHealthRatio)
-		setBarRatio(xpBarBg, displayedXpRatio)
-		local tRatio = hudSessionLength > 0 and (displayedTimerRemaining / hudSessionLength) or 0
-		setBarRatio(timerBarBg, tRatio)
-	end
-
-	-- Roblox 기본 체력 UI 억제
+	-- Roblox 기본 체력 UI 억제 — HudState 대기보다 먼저 (대기 중 블로킹돼도 숨김 적용됨)
 	playerGui.ChildAdded:Connect(function(child)
 		if child.Name == "Health" and child:IsA("ScreenGui") then
 			child.Enabled = false
@@ -214,6 +239,21 @@ function HUDClient.init()
 	end
 
 	suppressDefaultRobloxHealthUi(nil)
+
+	-- ---- 표시/목표 상태 (Humanoid) — HudState 없어도 Humanoid 바인딩으로 기본 체력 표시 타입 유지 ----
+	local targetHealth = 0
+	local targetMaxHealth = 1
+	local targetHealthRatio = 0
+	local displayedHealthRatio = 0
+	local displayedHealthNumber = 0
+
+	local function applyHealthTargetsFromHumanoid(humanoid)
+		local hp = humanoid.Health
+		local maxHp = humanoid.MaxHealth > 0 and humanoid.MaxHealth or 1
+		targetHealth = hp
+		targetMaxHealth = maxHp
+		targetHealthRatio = clamp01(hp / maxHp)
+	end
 
 	local humanoidConns = {}
 
@@ -268,6 +308,194 @@ function HUDClient.init()
 	player.CharacterAdded:Connect(bindCharacter)
 	if player.Character then
 		task.spawn(bindCharacter, player.Character)
+	end
+
+	local hudEvent = waitForChildTimeout(ReplicatedStorage, "HudState", HUDSTATE_WAIT_TIMEOUT_SEC)
+	if not hudEvent or not hudEvent:IsA("RemoteEvent") then
+		warn(
+			string.format(
+				"[HUDClient] HudState RemoteEvent 없음 또는 대기 타임아웃(%ds). 커스텀 HUD/Dev 패널은 건너뜁니다. 기본 체력바 숨김은 적용된 상태입니다.",
+				HUDSTATE_WAIT_TIMEOUT_SEC
+			)
+		)
+		return
+	end
+
+	local devCombatGui = Instance.new("ScreenGui")
+	devCombatGui.Name = "DevCombatPanel"
+	devCombatGui.ResetOnSpawn = false
+	devCombatGui.DisplayOrder = 100
+	devCombatGui.IgnoreGuiInset = true
+	devCombatGui.Enabled = false
+	devCombatGui.Parent = playerGui
+
+	local devCombatFrame = Instance.new("Frame")
+	devCombatFrame.Name = "DevCombatFrame"
+	devCombatFrame.AnchorPoint = Vector2.new(1, 0)
+	devCombatFrame.Position = UDim2.new(1, -8, 0, 8)
+	devCombatFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+	devCombatFrame.BackgroundTransparency = 0.35
+	devCombatFrame.BorderSizePixel = 0
+	devCombatFrame.AutomaticSize = Enum.AutomaticSize.XY
+	devCombatFrame.Parent = devCombatGui
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 8)
+	pad.PaddingRight = UDim.new(0, 8)
+	pad.PaddingTop = UDim.new(0, 6)
+	pad.PaddingBottom = UDim.new(0, 6)
+	pad.Parent = devCombatFrame
+
+	local devCombatLabel = Instance.new("TextLabel")
+	devCombatLabel.Name = "DevCombatLabel"
+	devCombatLabel.BackgroundTransparency = 1
+	devCombatLabel.Font = Enum.Font.Code
+	devCombatLabel.TextSize = 13
+	devCombatLabel.TextColor3 = Color3.fromRGB(235, 235, 245)
+	devCombatLabel.TextXAlignment = Enum.TextXAlignment.Left
+	devCombatLabel.TextYAlignment = Enum.TextYAlignment.Top
+	devCombatLabel.AutomaticSize = Enum.AutomaticSize.XY
+	devCombatLabel.TextWrapped = true
+	devCombatLabel.ZIndex = 2
+	devCombatLabel.MaxVisibleGraphemes = -1
+	devCombatLabel.Parent = devCombatFrame
+
+	devCombatLabel.AutomaticSize = Enum.AutomaticSize.Y
+	devCombatLabel.Size = UDim2.fromOffset(420, 0)
+
+	local function updateDevCombatPanel(payload)
+		local dc = payload and payload.DevCombat
+		if type(dc) ~= "table" then
+			devCombatGui.Enabled = false
+			devCombatLabel.Text = ""
+			return
+		end
+		local dbg = dc.Debug
+		if type(dbg) == "table" and dbg.ShowDevCombatPanel == false then
+			devCombatGui.Enabled = false
+			devCombatLabel.Text = ""
+			return
+		end
+		devCombatGui.Enabled = true
+		local ok, textOrErr = pcall(formatDevCombat, dc)
+		if ok then
+			devCombatLabel.Text = textOrErr
+		else
+			warn("[HUDClient] formatDevCombat 실패:", textOrErr)
+			devCombatLabel.Text = "[DevCombat]\n(표시 오류)"
+		end
+	end
+
+	local mainHUD = waitForChildTimeout(playerGui, "MainHUD", 60)
+	if not mainHUD then
+		warn("[HUDClient] MainHUD 가 PlayerGui 에 없습니다. — 기본 HUD 라벨 비활성 (DevCombat 패널은 HudState 가 오면 표시 가능).")
+	end
+
+	local hudFrame = mainHUD and waitForChildTimeout(mainHUD, "HUDFrame", 60)
+	if mainHUD and not hudFrame then
+		warn("[HUDClient] HUDFrame 없음 — 레벨/XP 표시 비활성.")
+	end
+
+	local levelLabel = hudFrame and hudFrame:FindFirstChild("LevelLabel", true)
+	local xpLabel = hudFrame and hudFrame:FindFirstChild("XPLabel", true)
+	local xpBarBg = hudFrame and hudFrame:FindFirstChild("XPBarBG", true)
+	local healthLabel = hudFrame and hudFrame:FindFirstChild("HealthLabel", true)
+	local healthBarBg = hudFrame and hudFrame:FindFirstChild("HealthBarBG", true)
+	if hudFrame and not healthLabel then
+		warn("[HUDClient] HealthLabel 을 HUDFrame 아래에서 찾지 못했습니다. 이름·부모 구조를 확인하세요.")
+	end
+
+	local timerBarRoot = mainHUD and waitForChildTimeout(mainHUD, "TimerBarRoot", 60)
+	if mainHUD and not timerBarRoot then
+		warn("[HUDClient] TimerBarRoot 없음 — 타이머 표시 비활성.")
+	end
+	local timerLabel = timerBarRoot and timerBarRoot:FindFirstChild("TimerLabel", true)
+	local timerBarBg = timerBarRoot and timerBarRoot:FindFirstChild("TimerBarBG", true)
+	local stageLabel = timerBarRoot and timerBarRoot:FindFirstChild("StageLabel", true)
+
+	-- ---- 표시/목표 상태 (HudState) ----
+	local hudTargetLevel = 1
+	local hudTargetXp = 0
+	local hudTargetXpToNext = 1
+	local hudTargetXpRatio = 0
+	local displayedXpRatio = 0
+	local lastHudLevelSeen = 1
+	local xpPhase = "normal"
+
+	local hudSessionActive = true
+	local hudSessionLength = 300
+	local hudStageIndex = 1
+	local timerAnchorTick = 0
+	local timerAnchorRemaining = 0
+	local displayedTimerRemaining = 0
+
+	local hudDataInitialized = false
+
+	local function recomputeTimerTargetRemaining()
+		if not hudSessionActive then
+			return 0
+		end
+		return math.max(0, timerAnchorRemaining - (tick() - timerAnchorTick))
+	end
+
+	local function ingestHudPayload(payload)
+		if type(payload) ~= "table" then
+			updateDevCombatPanel(nil)
+			return
+		end
+		hudTargetLevel = payload.Level or 1
+		hudTargetXp = payload.Xp or 0
+		hudTargetXpToNext = math.max(1, payload.XpToNext or 1)
+		hudSessionActive = payload.SessionActive ~= false
+		hudSessionLength = math.max(1, payload.SessionLengthSeconds or 300)
+		hudStageIndex = math.max(1, payload.StageIndex or 1)
+
+		local newRatio = hudTargetXp / hudTargetXpToNext
+		hudTargetXpRatio = clamp01(newRatio)
+
+		timerAnchorTick = tick()
+		timerAnchorRemaining = math.max(0, payload.SecondsLeft or 0)
+
+		if not hudDataInitialized then
+			displayedXpRatio = hudTargetXpRatio
+			lastHudLevelSeen = hudTargetLevel
+			xpPhase = "normal"
+			displayedTimerRemaining = timerAnchorRemaining
+			hudDataInitialized = true
+		else
+			if hudTargetLevel > lastHudLevelSeen then
+				xpPhase = "fillToFull"
+				lastHudLevelSeen = hudTargetLevel
+			elseif hudTargetLevel < lastHudLevelSeen then
+				lastHudLevelSeen = hudTargetLevel
+				xpPhase = "normal"
+				displayedXpRatio = hudTargetXpRatio
+			end
+		end
+
+		if levelLabel and levelLabel:IsA("TextLabel") then
+			levelLabel.Text = string.format("레벨 %d", hudTargetLevel)
+		end
+		if xpLabel and xpLabel:IsA("TextLabel") then
+			xpLabel.Text = string.format("XP %d / %d", hudTargetXp, hudTargetXpToNext)
+		end
+		if timerLabel and timerLabel:IsA("TextLabel") then
+			if hudSessionActive then
+				timerLabel.Text = string.format("남은 시간 %s", formatTimeSmooth(displayedTimerRemaining))
+			else
+				timerLabel.Text = "세션 종료"
+			end
+		end
+		if stageLabel and stageLabel:IsA("TextLabel") then
+			stageLabel.Text = string.format("Stage %d", hudStageIndex)
+		end
+
+		setBarRatio(healthBarBg, displayedHealthRatio)
+		setBarRatio(xpBarBg, displayedXpRatio)
+		local tRatio = hudSessionLength > 0 and (displayedTimerRemaining / hudSessionLength) or 0
+		setBarRatio(timerBarBg, tRatio)
+
+		updateDevCombatPanel(payload)
 	end
 
 	hudEvent.OnClientEvent:Connect(ingestHudPayload)

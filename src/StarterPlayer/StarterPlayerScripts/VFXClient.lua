@@ -222,6 +222,22 @@ local function resolveSwordShieldThrustTemplate(vfxRoot)
 	return findSwordShieldPrefabInAttackFolder(folder, "SwordShieldThrust")
 end
 
+local function resolveSpearThrustTemplate(vfxRoot)
+	local folder = resolveVfxAttackFolder(vfxRoot)
+	if not folder then
+		warnMissingVfxAttackFolderOnce()
+	end
+	return findSwordShieldPrefabInAttackFolder(folder, "Spear")
+end
+
+local function resolveTwoHandedSweepTemplate(vfxRoot)
+	local folder = resolveVfxAttackFolder(vfxRoot)
+	if not folder then
+		warnMissingVfxAttackFolderOnce()
+	end
+	return findSwordShieldPrefabInAttackFolder(folder, "TwoHandedSword")
+end
+
 local function placeCloneAtPosition(clone, position)
 	if clone:IsA("Model") then
 		pcall(function()
@@ -989,6 +1005,18 @@ local function playWorldVfx(
 			template = resolveSwordShieldThrustTemplate(vfxRoot)
 			if not template then
 				warn("[VFXClient] SwordShieldThrust 프리팹을 찾지 못했습니다 (VFX/ATTACK/SwordShieldThrust).")
+				return
+			end
+		elseif subtypeStr == "SpearThrust" then
+			template = resolveSpearThrustTemplate(vfxRoot)
+			if not template then
+				warn("[VFXClient] Spear 프리팹을 찾지 못했습니다 (VFX/ATTACK/Spear).")
+				return
+			end
+		elseif subtypeStr == "TwoHandedSweep" then
+			template = resolveTwoHandedSweepTemplate(vfxRoot)
+			if not template then
+				warn("[VFXClient] TwoHandedSword 프리팹을 찾지 못했습니다 (VFX/ATTACK/TwoHandedSword).")
 				return
 			end
 		else

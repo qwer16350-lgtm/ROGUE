@@ -65,9 +65,12 @@ function StageClient.init()
 		return
 	end
 
-	print("[DEBUG StageClient] cloneMainHudToPlayerGui OK — about to call VFXClient.init()")
-	HUDClient.init()
+	print("[DEBUG StageClient] cloneMainHudToPlayerGui OK — VFXClient.init() then HUDClient.init()")
 	VFXClient.init()
+	local hudOk, hudErr = pcall(HUDClient.init)
+	if not hudOk then
+		warn("[StageClient] HUDClient.init 실패:", hudErr)
+	end
 	LevelUpClient.init()
 	ResultClient.init()
 	DamageNumberClient.init()

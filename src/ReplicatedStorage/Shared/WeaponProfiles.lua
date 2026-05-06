@@ -49,4 +49,30 @@ WeaponProfiles.SwordShield = {
 	},
 }
 
+WeaponProfiles.Spear = {
+	Id = "Spear",
+	Label = "Spear",
+	AttackType = "Thrust",
+	BaseDamage = 30,
+	AttackIntervalSeconds = 1.1,
+	Thrust = {
+		RangeStuds = WeaponProfiles.SwordShield.Thrust.RangeStuds * 2,
+		WidthStuds = WeaponProfiles.SwordShield.Thrust.WidthStuds,
+		TargetLimit = 1,
+	},
+}
+
+WeaponProfiles.TwoHandedSword = {
+	Id = "TwoHandedSword",
+	Label = "Two-Handed Sword",
+	AttackType = "Sweep",
+	BaseDamage = 45,
+	AttackIntervalSeconds = 1.6,
+	Sweep = {
+		RangeStuds = WeaponProfiles.SwordShield.Sweep.RangeStuds * 1.4,
+		AngleDeg = WeaponProfiles.SwordShield.Sweep.AngleDeg + 15,
+		TargetLimit = nil, -- nil 이면 무제한 타격
+	},
+}
+
 return WeaponProfiles

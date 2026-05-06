@@ -2,11 +2,23 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local CombatService = {}
 
-function CombatService.init(players, runService, gameConfig, enemyService, progressionService, xpPickupService, waveService, healthPickupService, weaponDropService)
+function CombatService.init(
+	players,
+	runService,
+	gameConfig,
+	enemyService,
+	progressionService,
+	xpPickupService,
+	waveService,
+	healthPickupService,
+	weaponDropService,
+	relicDropService
+)
 	local Shared = ReplicatedStorage:WaitForChild("Shared")
 	local RunWeaponResolver = require(Shared:WaitForChild("RunWeaponResolver"))
 	local upgradeData = require(Shared:WaitForChild("UpgradeData"))
 	local weaponProfiles = require(Shared:WaitForChild("WeaponProfiles"))
+	local relicData = require(Shared:WaitForChild("RelicData"))
 
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local vfxEvent = remotes:WaitForChild("VFXEvent")
@@ -95,17 +107,33 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 		vfxEvent:FireAllClients(payload)
 	end
 
-	local lastAttackBasicMagic = {}
-	local lastAttackSwordShield = {}
-	--- false → 이번 틱은 Sweep 다음 false 유지 규칙: false면 Sweep 실행 후 다음은 Thrust
-	--- 간단히: nextIsThrust == true 면 이번에 Thrust, 아니면 Sweep
-	local swordShieldNextIsThrust: { [Player]: boolean } = {}
+	-- multi-weapon 대비: cooldown은 player + weaponId 단위로 저장
+	local lastAttackByPlayerWeapon: { [Player]: { [string]: number } } = {}
+	local function getLastAttack(player: Player, weaponId: string): number
+		local m = lastAttackByPlayerWeapon[player]
+		if type(m) ~= "table" then
+			return 0
+		end
+		local v = m[weaponId]
+		return type(v) == "number" and v or 0
+	end
+	local function setLastAttack(player: Player, weaponId: string, t: number)
+		local m = lastAttackByPlayerWeapon[player]
+		if type(m) ~= "table" then
+			m = {}
+			lastAttackByPlayerWeapon[player] = m
+		end
+		m[weaponId] = t
+	end
+
+	-- SwordShield alternating state: player + weaponId 단위 분리 (요구사항)
+	local swordShieldNextIsThrust: { [Player]: { [string]: boolean } } = {}
+	local warnedUnknownActiveWeapon: { [string]: boolean } = {}
 
 	local effectiveWeaponId = RunWeaponResolver.resolveEffectiveWeaponId(gameConfig)
 
 	players.PlayerRemoving:Connect(function(player)
-		lastAttackBasicMagic[player] = nil
-		lastAttackSwordShield[player] = nil
+		lastAttackByPlayerWeapon[player] = nil
 		swordShieldNextIsThrust[player] = nil
 	end)
 
@@ -126,8 +154,23 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 		return base
 	end
 
+	local function getSwordShieldRelicChestDropChance(): number
+		local base = gameConfig.SwordShieldRelicChestDropChance
+		if type(base) ~= "number" or base < 0 or base > 1 then
+			base = 0.02
+		end
+		local dbg = gameConfig.Debug
+		if type(dbg) == "table" then
+			local o = dbg.RelicChestDropChanceOverride
+			if type(o) == "number" and o >= 0 and o <= 1 then
+				return o
+			end
+		end
+		return base
+	end
+
 	--- 타겟 확정 후 피해/처치 처리 (판정 분기 바깥 공통 로직)
-	local function applyDamageResolved(player: Player, entry, damage: number)
+	local function applyDamageResolved(player: Player, entry, damage: number, sourceWeaponId: string)
 		local part = entry.part
 		if not part.Parent then
 			return
@@ -156,13 +199,29 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 			else
 				xpPickupService.spawnAt(hitPos, xpDrop)
 			end
+
+			-- 기존 정책 유지(보수): 런 effective weapon 및 legacy weaponId가 SwordShield일 때만 드롭/릴릭 체스트 롤
+			if weaponDropService and sourceWeaponId == "SwordShield" and math.random() < getSwordShieldWeaponDropChance() then
+				local dropWeaponId = "SwordShield"
+				if type(weaponDropService.pickDropWeaponId) == "function" then
+					dropWeaponId = weaponDropService.pickDropWeaponId()
+					if type(dropWeaponId) ~= "string" or dropWeaponId == "" then
+						dropWeaponId = "SwordShield"
+					end
+				end
+				if type(weaponDropService.spawnWeaponDropAt) == "function" then
+					weaponDropService.spawnWeaponDropAt(deathPos, player, dropWeaponId)
+				else
+					weaponDropService.spawnSwordShieldDropAt(deathPos, player)
+				end
+			end
 			if
-				weaponDropService
-				and effectiveWeaponId == "SwordShield"
+				relicDropService
+				and sourceWeaponId == "SwordShield"
 				and progressionService.getWeaponId(player) == "SwordShield"
-				and math.random() < getSwordShieldWeaponDropChance()
+				and math.random() < getSwordShieldRelicChestDropChance()
 			then
-				weaponDropService.spawnSwordShieldDropAt(deathPos, player)
+				relicDropService.spawnRelicChestAt(deathPos, player)
 			end
 			part:Destroy()
 		else
@@ -223,18 +282,18 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 		return forwardDistance >= 0 and forwardDistance <= length and rightDistance <= halfW
 	end
 
-	local function heartbeatBasicMagicWeapon(player: Player, root: BasePart, entries, now: number)
+	local function heartbeatBasicMagicWeapon(player: Player, weaponId: string, root: BasePart, entries, now: number)
 		local upgrades = progressionService.getUpgradeCounts(player)
 		local stats = upgradeData.getEffectiveCombatStats(gameConfig, upgrades)
 		local effectiveInterval = stats.attackIntervalSeconds
 		local effectiveRange = stats.attackRangeStuds
 		local damage = stats.damagePerHit
 
-		local last = lastAttackBasicMagic[player] or 0
+		local last = getLastAttack(player, weaponId)
 		if now - last < effectiveInterval then
 			return
 		end
-		lastAttackBasicMagic[player] = now
+		setLastAttack(player, weaponId, now)
 
 		local center = root.Position
 		local candidates = {}
@@ -275,21 +334,22 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 			if (part.Position - centerNow).Magnitude > effectiveRange then
 				continue
 			end
-			applyDamageResolved(player, entry, damage)
+			applyDamageResolved(player, entry, damage, "BasicMagic")
 		end
 	end
 
-	local function heartbeatSwordShieldWeapon(player: Player, root: BasePart, entries, now: number)
+	local function heartbeatSwordShieldWeapon(player: Player, weaponId: string, root: BasePart, entries, now: number)
 		local profile = weaponProfiles.SwordShield
 		local upgrades = progressionService.getUpgradeCounts(player)
 		local relicId = progressionService.getStartingRelicId(player)
 		local droppedRelicId = progressionService.getDroppedRelicId(player)
-		local weaponGrade = progressionService.getWeaponGrade(player)
+		local weaponGrade = progressionService.getWeaponGradeFor(player, weaponId)
 		local eff = upgradeData.getSwordShieldEffectiveCombat(gameConfig, profile, upgrades, relicId, droppedRelicId, weaponGrade)
 		local interval = eff.AttackIntervalSeconds
 		local sweepEff = eff.Sweep
 		local thrustEff = eff.Thrust
-		local lastSs = lastAttackSwordShield[player] or 0
+
+		local lastSs = getLastAttack(player, weaponId)
 		if now - lastSs < interval then
 			return
 		end
@@ -325,10 +385,15 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 		local forward = toTarget / dMag
 		local forwardThrustXZ = thrustForwardXZFromOffset(toTarget)
 
-		lastAttackSwordShield[player] = now
+		setLastAttack(player, weaponId, now)
 
-		local useThrust = swordShieldNextIsThrust[player] == true
-		swordShieldNextIsThrust[player] = not useThrust
+		local m = swordShieldNextIsThrust[player]
+		if type(m) ~= "table" then
+			m = {}
+			swordShieldNextIsThrust[player] = m
+		end
+		local useThrust = m[weaponId] == true
+		m[weaponId] = not useThrust
 
 		local cfgEff = useThrust and thrustEff or sweepEff
 		local range = cfgEff.RangeStuds
@@ -401,7 +466,209 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 		for _, entry in ipairs(inCone) do
 			local part = entry.part
 			if part.Parent then
-				applyDamageResolved(player, entry, damage)
+				-- DroppedRelic shield_spike: Sweep hit knockback only (server-side, XZ only).
+				if not useThrust and droppedRelicId == "shield_spike" then
+					local eff2 = relicData.getDroppedRelicEffect(droppedRelicId)
+					if type(eff2) == "table" and eff2.sweepKnockback == true then
+						local force = eff2.knockbackForce
+						if type(force) ~= "number" or force <= 0 then
+							force = 60
+						end
+						local offset = part.Position - root.Position
+						local dirXZ = Vector3.new(offset.X, 0, offset.Z)
+						if dirXZ.Magnitude < 1e-4 then
+							dirXZ = Vector3.new(forward.X, 0, forward.Z)
+						end
+						if dirXZ.Magnitude >= 1e-4 then
+							local dir = dirXZ.Unit
+							local v = part.AssemblyLinearVelocity
+							part.AssemblyLinearVelocity = Vector3.new(dir.X * force, v.Y, dir.Z * force)
+						end
+					end
+				end
+				applyDamageResolved(player, entry, damage, "SwordShield")
+			end
+		end
+	end
+
+	local function heartbeatSpearWeapon(player: Player, weaponId: string, root: BasePart, entries, now: number)
+		local profile = weaponProfiles.Spear
+		if type(profile) ~= "table" then
+			return
+		end
+		local upgrades = progressionService.getUpgradeCounts(player)
+		local weaponGrade = progressionService.getWeaponGradeFor(player, weaponId)
+		local eff = upgradeData.getSpearEffectiveCombat(gameConfig, profile, upgrades, weaponGrade)
+		local thrustEff = type(eff) == "table" and eff.Thrust or nil
+		if type(thrustEff) ~= "table" then
+			return
+		end
+		local interval = type(eff.AttackIntervalSeconds) == "number" and eff.AttackIntervalSeconds or 1.1
+		if interval <= 0 then
+			interval = 1.1
+		end
+		local baseDamage = type(thrustEff.BaseDamage) == "number" and thrustEff.BaseDamage or 30
+		local thrustLen = type(thrustEff.RangeStuds) == "number" and thrustEff.RangeStuds or 12
+		local thrustW = type(thrustEff.WidthStuds) == "number" and thrustEff.WidthStuds or 3
+		local targetLimit = type(thrustEff.TargetLimit) == "number" and math.max(1, math.floor(thrustEff.TargetLimit)) or 1
+
+		local last = getLastAttack(player, weaponId)
+		if now - last < interval then
+			return
+		end
+
+		local searchRange = type(profile.TargetSearchRangeStuds) == "number" and profile.TargetSearchRangeStuds or thrustLen
+		local origin = root.Position
+		local bestEntry = nil
+		local bestDist = math.huge
+		for _, entry in ipairs(entries) do
+			local part = entry.part
+			if part and part.Parent then
+				local d = (part.Position - origin).Magnitude
+				if d <= searchRange and d < bestDist then
+					bestDist = d
+					bestEntry = entry
+				end
+			end
+		end
+		if not bestEntry or not bestEntry.part or not bestEntry.part.Parent then
+			return
+		end
+
+		local toTarget = bestEntry.part.Position - origin
+		if toTarget.Magnitude < 1e-4 then
+			return
+		end
+		local forward = toTarget.Unit
+		local forwardThrustXZ = thrustForwardXZFromOffset(toTarget)
+
+		setLastAttack(player, weaponId, now)
+
+		local inStrip = {}
+		for _, entry in ipairs(entries) do
+			local part = entry.part
+			if part and part.Parent and inThrustStripXZ(origin, forwardThrustXZ, part.Position, thrustLen, thrustW) then
+				table.insert(inStrip, entry)
+			end
+		end
+		table.sort(inStrip, function(a, b)
+			local pa = a.part.Position - origin
+			local pb = b.part.Position - origin
+			local ta = pa:Dot(forwardThrustXZ)
+			local tb = pb:Dot(forwardThrustXZ)
+			if math.abs(ta - tb) > 1e-3 then
+				return ta < tb
+			end
+			return pa.Magnitude < pb.Magnitude
+		end)
+
+		fireVfx("attack", origin, nil, thrustLen, player.UserId, interval, "SpearThrust", forward)
+		fireAttackRangeDebug({
+			Shape = "LineBox",
+			Origin = origin,
+			Forward = forwardThrustXZ,
+			Length = thrustLen,
+			Width = thrustW,
+			Duration = 0.15,
+			AttackKind = "Spear",
+		})
+
+		local hitCount = 0
+		for _, entry in ipairs(inStrip) do
+			local part = entry.part
+			if part and part.Parent then
+				applyDamageResolved(player, entry, baseDamage, "Spear")
+				hitCount += 1
+				if hitCount >= targetLimit then
+					break
+				end
+			end
+		end
+	end
+
+	local function heartbeatTwoHandedSwordWeapon(player: Player, weaponId: string, root: BasePart, entries, now: number)
+		local profile = weaponProfiles.TwoHandedSword
+		if type(profile) ~= "table" then
+			return
+		end
+		local sweep = profile.Sweep
+		if type(sweep) ~= "table" then
+			return
+		end
+		local interval = type(profile.AttackIntervalSeconds) == "number" and profile.AttackIntervalSeconds or 1.6
+		if interval <= 0 then
+			interval = 1.6
+		end
+		local damage = type(profile.BaseDamage) == "number" and profile.BaseDamage or 45
+		local range = type(sweep.RangeStuds) == "number" and sweep.RangeStuds or 12
+		local angle = type(sweep.AngleDeg) == "number" and sweep.AngleDeg or 180
+		local targetLimit = nil
+		if type(sweep.TargetLimit) == "number" then
+			targetLimit = math.max(1, math.floor(sweep.TargetLimit))
+		end
+
+		local last = getLastAttack(player, weaponId)
+		if now - last < interval then
+			return
+		end
+
+		local searchRange = type(profile.TargetSearchRangeStuds) == "number" and profile.TargetSearchRangeStuds or range
+		local origin = root.Position
+		local bestEntry = nil
+		local bestDist = math.huge
+		for _, entry in ipairs(entries) do
+			local part = entry.part
+			if part and part.Parent then
+				local d = (part.Position - origin).Magnitude
+				if d <= searchRange and d < bestDist then
+					bestDist = d
+					bestEntry = entry
+				end
+			end
+		end
+		if not bestEntry or not bestEntry.part or not bestEntry.part.Parent then
+			return
+		end
+
+		local toTarget = bestEntry.part.Position - origin
+		if toTarget.Magnitude < 1e-4 then
+			return
+		end
+		local forward = toTarget.Unit
+
+		setLastAttack(player, weaponId, now)
+
+		local inCone = {}
+		for _, entry in ipairs(entries) do
+			local part = entry.part
+			if part and part.Parent and inForwardCone(origin, forward, part.Position, range, angle) then
+				table.insert(inCone, entry)
+			end
+		end
+		table.sort(inCone, function(a, b)
+			return (a.part.Position - origin).Magnitude < (b.part.Position - origin).Magnitude
+		end)
+
+		fireVfx("attack", origin, nil, range, player.UserId, interval, "TwoHandedSweep", forward)
+		fireAttackRangeDebug({
+			Shape = "Cone",
+			Origin = origin,
+			Forward = forward,
+			Range = range,
+			AngleDeg = angle,
+			Duration = 0.15,
+			AttackKind = "TwoHandedSword",
+		})
+
+		local hitCount = 0
+		for _, entry in ipairs(inCone) do
+			local part = entry.part
+			if part and part.Parent then
+				applyDamageResolved(player, entry, damage, "TwoHandedSword")
+				hitCount += 1
+				if targetLimit ~= nil and hitCount >= targetLimit then
+					break
+				end
 			end
 		end
 	end
@@ -413,7 +680,7 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 		end
 
 		local now = tick()
-		local weaponId = effectiveWeaponId
+		local fallbackWeaponId = effectiveWeaponId
 
 		for _, player in players:GetPlayers() do
 			local char = player.Character
@@ -422,10 +689,33 @@ function CombatService.init(players, runService, gameConfig, enemyService, progr
 				continue
 			end
 
-			if weaponId == "SwordShield" then
-				heartbeatSwordShieldWeapon(player, root, entries, now)
+			-- 핵심 조건: activeWeapons가 1개 이상이면 그것만 실행(중복 방지)
+			local aw = progressionService.getActiveWeapons(player)
+			local hasActive = type(aw) == "table" and next(aw) ~= nil
+			if hasActive then
+				for weaponId, _ in pairs(aw) do
+					if weaponId == "SwordShield" then
+						heartbeatSwordShieldWeapon(player, weaponId, root, entries, now)
+					elseif weaponId == "BasicMagic" then
+						heartbeatBasicMagicWeapon(player, weaponId, root, entries, now)
+					elseif weaponId == "Spear" then
+						heartbeatSpearWeapon(player, weaponId, root, entries, now)
+					elseif weaponId == "TwoHandedSword" then
+						heartbeatTwoHandedSwordWeapon(player, weaponId, root, entries, now)
+					else
+						if warnedUnknownActiveWeapon[weaponId] ~= true then
+							warn(string.format("[CombatService] unknown active weapon skipped: %s", tostring(weaponId)))
+							warnedUnknownActiveWeapon[weaponId] = true
+						end
+					end
+				end
 			else
-				heartbeatBasicMagicWeapon(player, root, entries, now)
+				-- activeWeapons가 없거나 비어있을 때만 legacy fallback
+				if fallbackWeaponId == "SwordShield" then
+					heartbeatSwordShieldWeapon(player, "SwordShield", root, entries, now)
+				else
+					heartbeatBasicMagicWeapon(player, "BasicMagic", root, entries, now)
+				end
 			end
 		end
 	end)

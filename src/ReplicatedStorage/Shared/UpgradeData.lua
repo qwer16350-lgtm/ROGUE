@@ -162,4 +162,330 @@ function UpgradeData.getSwordShieldEffectiveCombat(
 	}
 end
 
+local function sanitizeStackFromUpgrades(upgrades, key: string): number
+	if type(upgrades) ~= "table" then
+		return 0
+	end
+	local raw = upgrades[key]
+	if type(raw) ~= "number" or raw < 0 then
+		return 0
+	end
+	return math.max(0, math.floor(raw + 0.5))
+end
+
+local function sanitizePositiveNumber(v: any, fallback: number): number
+	if type(v) ~= "number" or v <= 0 then
+		return fallback
+	end
+	return v
+end
+
+local function resolveMultiplierFromDefinition(definition, stackCountValue: number): number
+	if type(definition) ~= "table" then
+		return 1
+	end
+	local op = definition.Operation
+	if op ~= "Multiplier" then
+		return 1
+	end
+
+	local stack = stackCountValue
+	local maxStackRaw = definition.MaxStack
+	if type(maxStackRaw) == "number" and maxStackRaw >= 0 then
+		stack = math.min(stack, math.max(0, math.floor(maxStackRaw + 0.5)))
+	end
+
+	local valuePerStack = definition.ValuePerStack
+	if type(valuePerStack) ~= "number" or valuePerStack < 0 then
+		return 1
+	end
+	return 1 + valuePerStack * stack
+end
+
+function UpgradeData.getSpearEffectiveCombat(gameConfig, weaponProfile, upgrades, weaponGrade: string?)
+	local profile = type(weaponProfile) == "table" and weaponProfile or {}
+	local thrustBase = type(profile.Thrust) == "table" and profile.Thrust or {}
+
+	local baseInterval = sanitizePositiveNumber(profile.AttackIntervalSeconds, 1.1)
+	local baseDamage = sanitizePositiveNumber(profile.BaseDamage, 30)
+	local baseRange = sanitizePositiveNumber(thrustBase.RangeStuds, 12)
+	local baseWidth = sanitizePositiveNumber(thrustBase.WidthStuds, 3)
+	local baseTargetLimit = sanitizePositiveNumber(thrustBase.TargetLimit, 1)
+	local targetLimit = math.max(1, math.floor(baseTargetLimit + 0.5))
+
+	local damageStack = sanitizeStackFromUpgrades(upgrades, "sp_thrust_damage")
+	local rangeStack = sanitizeStackFromUpgrades(upgrades, "sp_thrust_range")
+
+	local damageDef = UpgradeData.getUpgradeDefinition("sp_thrust_damage")
+	local rangeDef = UpgradeData.getUpgradeDefinition("sp_thrust_range")
+	local damageMul = resolveMultiplierFromDefinition(damageDef, damageStack)
+	local rangeMul = resolveMultiplierFromDefinition(rangeDef, rangeStack)
+
+	local gradeMul = 1
+	local gm = profile.GradeMultipliers
+	if type(gm) == "table" then
+		local gKey = weaponGrade
+		if type(gKey) ~= "string" or gKey == "" then
+			gKey = "Normal"
+		end
+		local row = gm[gKey] or gm.Normal
+		if type(row) == "table" and type(row.ThrustDamageMul) == "number" and row.ThrustDamageMul > 0 then
+			gradeMul = row.ThrustDamageMul
+		end
+	end
+
+	return {
+		AttackIntervalSeconds = baseInterval,
+		Thrust = {
+			BaseDamage = baseDamage * damageMul * gradeMul,
+			RangeStuds = baseRange * rangeMul,
+			WidthStuds = baseWidth,
+			TargetLimit = targetLimit,
+		},
+		Meta = {
+			WeaponGrade = type(weaponGrade) == "string" and weaponGrade or "Normal",
+			sp_thrust_damage = damageStack,
+			sp_thrust_range = rangeStack,
+		},
+	}
+end
+
+--[[
+Legacy relation note:
+- Choices / SwordShieldChoices are legacy Phase 1 runtime offer pools.
+- UpgradeDefinitions is for Phase 2 schema preparation only.
+- From Phase 2C, OfferBuilder is expected to optionally consume UpgradeDefinitions with activeWeapons context.
+]]
+UpgradeData.UpgradeDefinitions = {
+	-- WeaponSpecific examples
+	sp_thrust_damage = {
+		Id = "sp_thrust_damage",
+		Label = "Spear Thrust Damage",
+		Layer = "WeaponSpecific",
+		WeaponId = "Spear",
+		AttackType = "Thrust",
+		Stat = "Damage",
+		Operation = "Multiplier",
+		ValuePerStack = 0.15,
+		MaxStack = 5,
+	},
+	sp_thrust_range = {
+		Id = "sp_thrust_range",
+		Label = "Spear Thrust Range",
+		Layer = "WeaponSpecific",
+		WeaponId = "Spear",
+		AttackType = "Thrust",
+		Stat = "Range",
+		Operation = "Multiplier",
+		ValuePerStack = 0.12,
+		MaxStack = 5,
+	},
+	th_sweep_damage = {
+		Id = "th_sweep_damage",
+		Label = "Two-Handed Sweep Damage",
+		Layer = "WeaponSpecific",
+		WeaponId = "TwoHandedSword",
+		AttackType = "Sweep",
+		Stat = "Damage",
+		Operation = "Multiplier",
+		ValuePerStack = 0.15,
+		MaxStack = 5,
+	},
+	th_sweep_range = {
+		Id = "th_sweep_range",
+		Label = "Two-Handed Sweep Range",
+		Layer = "WeaponSpecific",
+		WeaponId = "TwoHandedSword",
+		AttackType = "Sweep",
+		Stat = "Range",
+		Operation = "Multiplier",
+		ValuePerStack = 0.12,
+		MaxStack = 5,
+	},
+
+	-- AttackTypeCommon examples
+	co_thrust_damage = {
+		Id = "co_thrust_damage",
+		Label = "Thrust Damage",
+		Layer = "AttackTypeCommon",
+		AttackType = "Thrust",
+		Stat = "Damage",
+		Operation = "Multiplier",
+		ValuePerStack = 0.10,
+		MaxStack = 5,
+	},
+	co_sweep_damage = {
+		Id = "co_sweep_damage",
+		Label = "Sweep Damage",
+		Layer = "AttackTypeCommon",
+		AttackType = "Sweep",
+		Stat = "Damage",
+		Operation = "Multiplier",
+		ValuePerStack = 0.10,
+		MaxStack = 5,
+	},
+
+	-- PlayerSystem example
+	ab_xp_increase = {
+		Id = "ab_xp_increase",
+		Label = "XP Gain Increase",
+		Layer = "PlayerSystem",
+		AttackType = "Any",
+		Stat = "XP",
+		Operation = "Multiplier",
+		ValuePerStack = 0.10,
+		MaxStack = 5,
+	},
+}
+
+local VALID_LAYERS = {
+	WeaponSpecific = true,
+	AttackTypeCommon = true,
+	PlayerSystem = true,
+}
+
+local VALID_OPERATIONS = {
+	Multiplier = true,
+	Additive = true,
+	IntegerAdditive = true,
+	Unlock = true,
+}
+
+local REQUIRED_DEFINITION_FIELDS = {
+	"Id",
+	"Label",
+	"Layer",
+	"Stat",
+	"Operation",
+	"ValuePerStack",
+	"MaxStack",
+}
+
+function UpgradeData.getUpgradeDefinition(upgradeId: string)
+	if type(upgradeId) ~= "string" or upgradeId == "" then
+		return nil
+	end
+	local defs = UpgradeData.UpgradeDefinitions
+	if type(defs) ~= "table" then
+		return nil
+	end
+	local row = defs[upgradeId]
+	if type(row) ~= "table" then
+		return nil
+	end
+	return row
+end
+
+function UpgradeData.getUpgradeDefinitionsByLayer(layer: string)
+	local out = {}
+	if type(layer) ~= "string" or layer == "" then
+		return out
+	end
+	local defs = UpgradeData.UpgradeDefinitions
+	if type(defs) ~= "table" then
+		return out
+	end
+	for _, row in pairs(defs) do
+		if type(row) == "table" and row.Layer == layer then
+			table.insert(out, row)
+		end
+	end
+	return out
+end
+
+function UpgradeData.getUpgradeDefinitionsForWeapon(weaponId: string)
+	local out = {}
+	if type(weaponId) ~= "string" or weaponId == "" then
+		return out
+	end
+	local defs = UpgradeData.UpgradeDefinitions
+	if type(defs) ~= "table" then
+		return out
+	end
+	for _, row in pairs(defs) do
+		if type(row) == "table" and row.WeaponId == weaponId then
+			table.insert(out, row)
+		end
+	end
+	return out
+end
+
+function UpgradeData.getUpgradeDefinitionsForAttackType(attackType: string)
+	local out = {}
+	if type(attackType) ~= "string" or attackType == "" then
+		return out
+	end
+	local defs = UpgradeData.UpgradeDefinitions
+	if type(defs) ~= "table" then
+		return out
+	end
+	for _, row in pairs(defs) do
+		if type(row) == "table" and row.AttackType == attackType then
+			table.insert(out, row)
+		end
+	end
+	return out
+end
+
+function UpgradeData.getChoiceForDefinition(upgradeId: string)
+	local row = UpgradeData.getUpgradeDefinition(upgradeId)
+	if type(row) ~= "table" then
+		return nil
+	end
+	if type(row.Id) ~= "string" or row.Id == "" then
+		return nil
+	end
+	if type(row.Label) ~= "string" or row.Label == "" then
+		return nil
+	end
+	return {
+		Id = row.Id,
+		Label = row.Label,
+	}
+end
+
+function UpgradeData.validateUpgradeDefinitions()
+	local issues = {}
+	local defs = UpgradeData.UpgradeDefinitions
+	if type(defs) ~= "table" then
+		table.insert(issues, "UpgradeDefinitions is not a table")
+		return issues
+	end
+
+	local seenIds = {}
+	for key, row in pairs(defs) do
+		if type(row) ~= "table" then
+			table.insert(issues, string.format("%s: definition row is not a table", tostring(key)))
+		else
+			for _, fieldName in ipairs(REQUIRED_DEFINITION_FIELDS) do
+				if row[fieldName] == nil then
+					table.insert(issues, string.format("%s: missing required field '%s'", tostring(key), fieldName))
+				end
+			end
+
+			if type(row.Id) ~= "string" or row.Id == "" then
+				table.insert(issues, string.format("%s: invalid Id", tostring(key)))
+			else
+				if seenIds[row.Id] then
+					table.insert(issues, string.format("%s: duplicated Id '%s'", tostring(key), row.Id))
+				end
+				seenIds[row.Id] = true
+				if row.Id ~= key then
+					table.insert(issues, string.format("%s: key and Id mismatch (Id=%s)", tostring(key), row.Id))
+				end
+			end
+
+			if type(row.Layer) ~= "string" or not VALID_LAYERS[row.Layer] then
+				table.insert(issues, string.format("%s: invalid Layer '%s'", tostring(key), tostring(row.Layer)))
+			end
+
+			if type(row.Operation) ~= "string" or not VALID_OPERATIONS[row.Operation] then
+				table.insert(issues, string.format("%s: invalid Operation '%s'", tostring(key), tostring(row.Operation)))
+			end
+		end
+	end
+
+	return issues
+end
+
 return UpgradeData

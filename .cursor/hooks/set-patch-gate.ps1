@@ -2,6 +2,8 @@
   beforeSubmitPrompt - Writes .cursor/.patch_gate_allow to "1" only if the prompt contains
   ASCII token APPROVE_PATCH as a standalone token.
 
+  Fallback: JSON parse failure (parse=json_error) or empty extracted prompt — scan raw stdin with the same token regex.
+
   Always prints { continue: true }; edit gate is enforced in enforce-patch-gate.ps1 (preToolUse).
 
   Appends ASCII lines to .cursor/hooks-debug.log: stdin length, JSON parse outcome, gate.
@@ -99,10 +101,15 @@ try {
     @{ continue = $true } | ConvertTo-Json -Compress
     exit 0
   }
-
   $flagPath = Join-Path $projRoot '.cursor\.patch_gate_allow'
-  $val = '0'
-  if ($parseStatus -like 'json_ok*' -and (Test-ApprovePatchToken $prompt)) { $val = '1' }
+  $openedViaPrimary = ($parseStatus -like 'json_ok*') -and (Test-ApprovePatchToken $prompt)
+  $val = if ($openedViaPrimary) { '1' } else { '0' }
+
+  $tryRawStdinFallback = ($parseStatus -eq 'json_error') -or ([string]::IsNullOrWhiteSpace($prompt))
+  $stdinHasApprovePatch = Test-ApprovePatchToken $stdin
+  if (($val -eq '0') -and $tryRawStdinFallback -and $stdinHasApprovePatch) {
+    $val = '1'
+  }
 
   Set-GateSafe -Path $flagPath -Value $val
 
@@ -115,9 +122,13 @@ try {
   }
 
   $note = 'ok'
-  if ($parseStatus -eq 'json_error') { $note = 'gate_forced_zero_json_error' }
+  if ($val -eq '1') {
+    if ((-not $openedViaPrimary) -and $tryRawStdinFallback -and $stdinHasApprovePatch) {
+      $note = 'gate_open_raw_stdin_fallback'
+    }
+  }
+  elseif ($parseStatus -eq 'json_error') { $note = 'gate_forced_zero_json_error' }
   elseif ($parseStatus -eq 'stdin_empty') { $note = 'gate_forced_zero_stdin_empty' }
-
   Write-BeforeSubmitDebugLine -ProjRoot $projRoot -stdinLen $stdinLenStr -promptLen $promptLenStr `
     -ParseStatus $parseStatus -GateVal $val -note $note
 

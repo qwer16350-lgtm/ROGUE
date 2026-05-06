@@ -2,6 +2,45 @@
 
 local UpgradeOfferBuilder = {}
 
+local SPEAR_CHOICE_IDS = {
+	"sp_thrust_damage",
+	"sp_thrust_range",
+}
+
+local function hasActiveSpear(activeWeapons): boolean
+	if type(activeWeapons) ~= "table" then
+		return false
+	end
+	return type(activeWeapons.Spear) == "table"
+end
+
+local function appendSpearChoicesIfOwned(pool, upgradeData, activeWeapons)
+	if not hasActiveSpear(activeWeapons) then
+		return
+	end
+	if type(upgradeData) ~= "table" then
+		return
+	end
+	if type(upgradeData.getChoiceForDefinition) ~= "function" then
+		return
+	end
+	local exists = {}
+	for _, row in ipairs(pool) do
+		if type(row) == "table" and type(row.Id) == "string" then
+			exists[row.Id] = true
+		end
+	end
+	for _, choiceId in ipairs(SPEAR_CHOICE_IDS) do
+		if not exists[choiceId] then
+			local row = upgradeData.getChoiceForDefinition(choiceId)
+			if type(row) == "table" and type(row.Id) == "string" and type(row.Label) == "string" then
+				table.insert(pool, { Id = row.Id, Label = row.Label })
+				exists[row.Id] = true
+			end
+		end
+	end
+end
+
 local function weightForChoice(choice: { Id: string, Label: string }, weightsMap: { [string]: number }): number
 	local w = weightsMap[choice.Id]
 	if type(w) == "number" and w > 0 then
@@ -73,11 +112,22 @@ function UpgradeOfferBuilder.buildUpgradeOffer(
 	poolWeaponId: string,
 	startingRelicId: string?,
 	upgradeData: any,
-	relicDataModule: { getSwordShieldUpgradePickWeights: (string?) -> { [string]: number } }?
+	relicDataModule: { getSwordShieldUpgradePickWeights: (string?) -> { [string]: number } }?,
+	options: any?
 ): ({ { Id: string, Label: string } }, { [string]: boolean })
+	local activeWeapons = nil
+	if type(options) == "table" then
+		activeWeapons = options.activeWeapons
+	end
+
 	if poolWeaponId == "SwordShield" then
+		local pool = {}
+		for _, choice in ipairs(upgradeData.SwordShieldChoices) do
+			table.insert(pool, { Id = choice.Id, Label = choice.Label })
+		end
+		appendSpearChoicesIfOwned(pool, upgradeData, activeWeapons)
 		local picked = UpgradeOfferBuilder.weightedPickThreeSwordShieldChoices(
-			upgradeData.SwordShieldChoices,
+			pool,
 			startingRelicId,
 			relicDataModule
 		)
@@ -92,6 +142,7 @@ function UpgradeOfferBuilder.buildUpgradeOffer(
 	for _, choice in ipairs(upgradeData.Choices) do
 		table.insert(picked, { Id = choice.Id, Label = choice.Label })
 	end
+	appendSpearChoicesIfOwned(picked, upgradeData, activeWeapons)
 	local allowed = {}
 	for _, row in ipairs(picked) do
 		allowed[row.Id] = true

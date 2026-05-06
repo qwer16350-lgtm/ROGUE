@@ -104,9 +104,37 @@ function Normalize-PlanScopeRelPath([string]$p) {
 
 function Extract-ApplyPatchPathFromText([string]$text) {
   if ([string]::IsNullOrWhiteSpace($text)) { return '' }
-  $m = [regex]::Match($text, '(?ms)\*\*\*\s*(?:Add|Update)\s+File:\s*(.+?)\s*\*\*\*')
-  if (-not $m.Success) { return '' }
-  return $m.Groups[1].Value.Trim()
+  $m = [regex]::Match(
+    $text,
+    '(?m)^\*\*\*\s*(?:Add|Update)\s+File:\s*(.+?)\s*$'
+  )
+  if ($m.Success) {
+    return $m.Groups[1].Value.Trim()
+  }
+  $m2 = [regex]::Match(
+    $text,
+    '(?ms)\*\*\*\s*(?:Add|Update)\s+File:\s*(.+?)\s*\*\*\*'
+  )
+  if ($m2.Success) {
+    return $m2.Groups[1].Value.Trim()
+  }
+  return ''
+}
+
+function Extract-PathFromRawStdinFallback([string]$text) {
+  if ([string]::IsNullOrWhiteSpace($text)) { return '' }
+  foreach ($pat in @(
+      '(?ms)"path"\s*:\s*"([^"]+)"',
+      '(?ms)"target_path"\s*:\s*"([^"]+)"',
+      '(?ms)"file_path"\s*:\s*"([^"]+)"',
+      '(?ms)"targetFile"\s*:\s*"([^"]+)"'
+    )) {
+    $m = [regex]::Match($text, $pat)
+    if ($m.Success) {
+      return $m.Groups[1].Value.Trim()
+    }
+  }
+  return ''
 }
 
 function Get-ToolTargetPathFromStdinJson {
@@ -121,11 +149,7 @@ function Get-ToolTargetPathFromStdinJson {
   if (-not [string]::IsNullOrWhiteSpace($RawStdin)) {
     $ap = Extract-ApplyPatchPathFromText $RawStdin
     if (-not [string]::IsNullOrWhiteSpace($ap)) {
-      foreach ($tls in @('apply_patch', 'ApplyPatch')) {
-        if ([string]::Equals($ToolLabel, $tls, [StringComparison]::OrdinalIgnoreCase)) {
-          return $ap
-        }
-      }
+      return $ap
     }
   }
 
@@ -133,6 +157,10 @@ function Get-ToolTargetPathFromStdinJson {
 
   $pathKeyLower = @{
     'path' = $true
+    'target_path' = $true
+    'targetpath' = $true
+    'relative_path' = $true
+    'relativepath' = $true
     'target_file' = $true
     'targetfile' = $true
     'file_path' = $true
@@ -153,21 +181,34 @@ function Get-ToolTargetPathFromStdinJson {
     }
     foreach ($nestKey in @('arguments', 'input', 'payload', 'tool_input', 'toolInput', 'params')) {
       if ($Root.ContainsKey($nestKey)) {
-        $inner = Get-ToolTargetPathFromStdinJson -Root $Root[$nestKey] -RawStdin '' -ToolLabel $ToolLabel -Depth ($Depth + 1)
+        $inner = Get-ToolTargetPathFromStdinJson -Root $Root[$nestKey] -RawStdin $RawStdin -ToolLabel $ToolLabel -Depth ($Depth + 1)
         if (-not [string]::IsNullOrWhiteSpace($inner)) { return $inner }
       }
     }
     foreach ($key in $Root.Keys) {
-      $inner = Get-ToolTargetPathFromStdinJson -Root $Root[$key] -RawStdin '' -ToolLabel $ToolLabel -Depth ($Depth + 1)
+      $inner = Get-ToolTargetPathFromStdinJson -Root $Root[$key] -RawStdin $RawStdin -ToolLabel $ToolLabel -Depth ($Depth + 1)
       if (-not [string]::IsNullOrWhiteSpace($inner)) { return $inner }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RawStdin)) {
+      $fbDict = Extract-PathFromRawStdinFallback $RawStdin
+      if (-not [string]::IsNullOrWhiteSpace($fbDict)) {
+        return $fbDict
+      }
     }
     return ''
   }
 
   if ($Root -is [System.Collections.IEnumerable] -and $Root -isnot [string]) {
     foreach ($item in $Root) {
-      $inner = Get-ToolTargetPathFromStdinJson -Root $item -RawStdin '' -ToolLabel $ToolLabel -Depth ($Depth + 1)
+      $inner = Get-ToolTargetPathFromStdinJson -Root $item -RawStdin $RawStdin -ToolLabel $ToolLabel -Depth ($Depth + 1)
       if (-not [string]::IsNullOrWhiteSpace($inner)) { return $inner }
+    }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($RawStdin)) {
+    $fb = Extract-PathFromRawStdinFallback $RawStdin
+    if (-not [string]::IsNullOrWhiteSpace($fb)) {
+      return $fb
     }
   }
 
@@ -187,6 +228,56 @@ function Test-PlanScopeFileToolName([string]$name) {
     }
   }
   return $false
+}
+
+# Repo-relative path for stdin tool target (same normalization as plan scope gate). Empty if unknown / escapes repo.
+function Get-NormalizedToolTargetRelPath {
+  param(
+    [string]$RepoRoot,
+    [string]$ToolLabel,
+    [string]$StdinRaw
+  )
+
+  $normEnvelope = Normalize-HookStdinEnvelope $StdinRaw
+  $root = Get-HookDeserializeRootJs $normEnvelope
+  $pathRaw = Get-ToolTargetPathFromStdinJson -Root $root -RawStdin $StdinRaw -ToolLabel $ToolLabel -Depth 0
+  if ([string]::IsNullOrWhiteSpace($pathRaw)) {
+    return ''
+  }
+
+  $repoFull = [System.IO.Path]::GetFullPath($RepoRoot)
+
+  $relCandidate = ''
+  try {
+    $maybeFull = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $pathRaw))
+    if ($maybeFull.StartsWith($repoFull, [StringComparison]::OrdinalIgnoreCase)) {
+      $tail = $maybeFull.Substring($repoFull.Length).TrimStart([char[]]@( '/', '\' ))
+      $relCandidate = Normalize-PlanScopeRelPath($tail)
+    }
+    else {
+      $relCandidate = Normalize-PlanScopeRelPath $pathRaw
+    }
+  }
+  catch {
+    $relCandidate = Normalize-PlanScopeRelPath $pathRaw
+  }
+
+  if ([string]::IsNullOrWhiteSpace($relCandidate)) {
+    return ''
+  }
+
+  $combined = Join-Path $RepoRoot ($relCandidate -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+  try {
+    $fullTarget = [System.IO.Path]::GetFullPath($combined)
+    if (-not $fullTarget.StartsWith($repoFull, [StringComparison]::OrdinalIgnoreCase)) {
+      return ''
+    }
+  }
+  catch {
+    return ''
+  }
+
+  return $relCandidate
 }
 
 function Invoke-PlanScopeGate {
@@ -242,13 +333,33 @@ function Invoke-PlanScopeGate {
       $approvedNorm[$line] = $true
     }
   }
+$normEnvelope = Normalize-HookStdinEnvelope $StdinRaw
+$root = Get-HookDeserializeRootJs $normEnvelope
+$pathRaw = Get-ToolTargetPathFromStdinJson -Root $root -RawStdin $StdinRaw -ToolLabel $ToolLabel -Depth 0
 
-  $normEnvelope = Normalize-HookStdinEnvelope $StdinRaw
-  $root = Get-HookDeserializeRootJs $normEnvelope
-  $pathRaw = Get-ToolTargetPathFromStdinJson -Root $root -RawStdin $StdinRaw -ToolLabel $ToolLabel -Depth 0
-  if ([string]::IsNullOrWhiteSpace($pathRaw)) {
-    return [PSCustomObject]@{ ok = $false; note = 'plan_scope_path_unknown_fail_closed' }
+if ([string]::IsNullOrWhiteSpace($pathRaw)) {
+  # Safe fallback: Write 계열에서 path 추출 실패 시,
+  # approvedFiles에서 current-plan.json을 제외한 "실작업 파일"이 1개면 그 경로를 사용
+  if ([string]::Equals($ToolLabel, 'Write', [StringComparison]::OrdinalIgnoreCase)) {
+    $workApproved = @(
+      $approvedNorm.Keys | Where-Object {
+        -not [string]::Equals($_, '.cursor/task-state/current-plan.json', [StringComparison]::OrdinalIgnoreCase)
+      }
+    )
+    if ($workApproved.Count -eq 1) {
+      $onlyApproved = [string]$workApproved[0]
+      if (-not [string]::IsNullOrWhiteSpace($onlyApproved)) {
+        $pathRaw = $onlyApproved
+      }
+    }
   }
+}
+
+if ([string]::IsNullOrWhiteSpace($pathRaw)) {
+  $hasPatchHeader = -not [string]::IsNullOrWhiteSpace((Extract-ApplyPatchPathFromText $StdinRaw))
+  $detail = if ($hasPatchHeader) { 'no_json_path_key' } else { 'no_patch_header' }
+  return [PSCustomObject]@{ ok = $false; note = ('plan_scope_path_unknown_fail_closed_' + $detail) }
+}
 
   $repoFull = [System.IO.Path]::GetFullPath($RepoRoot)
 
@@ -403,6 +514,24 @@ try {
       -GateValue $gateForLog -Blocked $blockedTag -Decision 'allow' -note 'nonblocked_tool'
     @{ permission = 'allow' } | ConvertTo-Json -Compress
     exit 0
+  }
+
+  # Planner prep only: allow editing plan scope JSON without APPROVE_PATCH (hooks do not parse PLAN markdown).
+  $currentPlanRel = '.cursor/task-state/current-plan.json'
+  if (Test-PlanScopeFileToolName $toolName) {
+    try {
+      $relT = Get-NormalizedToolTargetRelPath -RepoRoot $projRoot -ToolLabel $toolName -StdinRaw $stdin
+      if (-not [string]::IsNullOrWhiteSpace($relT)) {
+        if ([string]::Equals($relT, $currentPlanRel, [StringComparison]::OrdinalIgnoreCase)) {
+          Write-HooksDebugOneLine -ProjRoot $projRoot -ToolSnippet $toolName `
+            -GateValue $gateForLog -Blocked $blockedTag -Decision 'allow' -note 'current_plan_json_pre_gate_allow'
+          @{ permission = 'allow' } | ConvertTo-Json -Compress
+          exit 0
+        }
+      }
+    }
+    catch {
+    }
   }
 
   if ($allowed) {
