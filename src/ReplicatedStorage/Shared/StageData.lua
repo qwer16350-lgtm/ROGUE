@@ -5,14 +5,6 @@ local MapConfig = require(
 	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("MapConfig")
 )
 
--- 축 구분 (중요):
---   Biome          = 자산 소속. ServerStorage.MapAssets.Biomes.<Biome> 의 타일/경계 풀과
---                    BiomeRegistry 의 RuntimeNames(Open/Bottleneck/Boundary) 를 결정.
---                    여러 stage 가 같은 biome 을 공유해도 된다.
---   MarkerRootName = stage 좌표 소속. Workspace.Map.RuntimeMarkers.<MarkerRootName>
---                    하위에 놓인 Marker_Tile_* 좌표 집합을 결정. stage 마다 고유.
--- 두 값은 직교한다. 같은 규칙(biome) × 분리된 좌표(marker root) 구조.
--- 아래 각 row 는 두 필드를 모두 명시하는 것이 기준이다.
 local Stages = {
 	{
 		SpawnPartName = "Spawn_1",
@@ -25,7 +17,6 @@ local Stages = {
 		OriginPartName = "Origin_2",
 		Biome = "Desert",
 		MarkerRootName = "Desert",
-		-- 테스트: 1층보다 그런트 간격 곡선만 다르게 (램프는 GameConfig 그대로)
 		GruntIntervalStart = 1.2,
 		GruntIntervalEnd = 0.55,
 		EliteGruntEnabled = true,
@@ -68,10 +59,6 @@ function StageData.getRow(stageIndex)
 	return Stages[i], i
 end
 
---- Biome 축 (자산 소속) 해석.
---- row.Biome 이 비빈 문자열이면 그것을 사용.
---- TODO(temp-fallback): 모든 stage row 가 Biome 을 명시하면 아래 폴백 라인은 제거한다.
---- 이 폴백은 임시 호환 장치일 뿐 장기 구조로 간주하지 말 것.
 function StageData.getBiomeName(stageIndex)
 	local row = select(1, StageData.getRow(stageIndex))
 	if type(row.Biome) == "string" and row.Biome ~= "" then
@@ -80,10 +67,6 @@ function StageData.getBiomeName(stageIndex)
 	return MapConfig.DefaultBiome
 end
 
---- MarkerRootName 축 (stage 좌표 소속) 해석.
---- row.MarkerRootName 이 비빈 문자열이면 그것을 사용.
---- TODO(temp-fallback): 모든 stage row 가 MarkerRootName 을 명시하면 아래 폴백 라인은 제거한다.
---- 임시 호환 장치 — biome 이름을 좌표 루트로 간주하던 구 커플링을 유지할 뿐 장기 구조가 아니다.
 function StageData.getMarkerRootName(stageIndex)
 	local row = select(1, StageData.getRow(stageIndex))
 	if type(row.MarkerRootName) == "string" and row.MarkerRootName ~= "" then
@@ -118,8 +101,6 @@ function StageData.getSessionDurationSeconds(gameConfig, stageIndex)
 	return gameConfig.SessionDurationSeconds
 end
 
---- 층별 스폰에 쓸 값만 명시적으로 채운다. (범용 merge 유틸 아님)
---- 램프는 WaveService가 GameConfig 그대로 사용.
 function StageData.getSpawnProfile(gameConfig, stageIndex)
 	local row = select(1, StageData.getRow(stageIndex))
 	local gruntStart = gameConfig.WaveGruntSpawnIntervalStart

@@ -81,7 +81,9 @@ local function formatDevCombat(dc)
 	for _, k in ipairs(SS_KEYS_ORDERED) do
 		table.insert(lines, string.format("%s: %s", k, formatSsUpgrade(dc[k])))
 	end
+	local hasAnyEffective = false
 	if isSword and type(dc.SwordShieldEffective) == "table" then
+		hasAnyEffective = true
 		local eff = dc.SwordShieldEffective
 		table.insert(lines, "--- SwordShieldEffective ---")
 		table.insert(lines, string.format("AttackIntervalSeconds: %s", fmtDevNum(eff.AttackIntervalSeconds)))
@@ -97,16 +99,17 @@ local function formatDevCombat(dc)
 			table.insert(lines, string.format("Thrust.RangeStuds: %s", fmtDevNum(th.RangeStuds)))
 			table.insert(lines, string.format("Thrust.WidthStuds: %s", fmtDevNum(th.WidthStuds)))
 		end
-		table.insert(lines, "BasicMagicEffective: --")
-	elseif type(dc.BasicMagicEffective) == "table" then
+	end
+	if type(dc.BasicMagicEffective) == "table" then
+		hasAnyEffective = true
 		local bm = dc.BasicMagicEffective
 		table.insert(lines, "--- BasicMagicEffective ---")
 		table.insert(lines, string.format("damagePerHit: %s", fmtDevNum(bm.damagePerHit)))
 		table.insert(lines, string.format("attackIntervalSeconds: %s", fmtDevNum(bm.attackIntervalSeconds)))
 		table.insert(lines, string.format("attackRangeStuds: %s", fmtDevNum(bm.attackRangeStuds)))
-		table.insert(lines, "SwordShieldEffective: --")
-		table.insert(lines, "SpearEffective: --")
-	elseif type(dc.SpearEffective) == "table" then
+	end
+	if type(dc.SpearEffective) == "table" then
+		hasAnyEffective = true
 		local sp = dc.SpearEffective
 		table.insert(lines, "--- SpearEffective ---")
 		table.insert(lines, string.format("Grade: %s", fmtDevScalar(sp.Grade)))
@@ -117,21 +120,21 @@ local function formatDevCombat(dc)
 		table.insert(lines, string.format("TargetLimit: %s", fmtDevNum(sp.TargetLimit)))
 		table.insert(lines, string.format("sp_thrust_damage: %s", formatSsUpgrade(sp.sp_thrust_damage)))
 		table.insert(lines, string.format("sp_thrust_range: %s", formatSsUpgrade(sp.sp_thrust_range)))
-		table.insert(lines, "SwordShieldEffective: --")
-		table.insert(lines, "BasicMagicEffective: --")
-		table.insert(lines, "TwoHandedSwordEffective: --")
-	elseif type(dc.TwoHandedSwordEffective) == "table" then
+	end
+	if type(dc.TwoHandedSwordEffective) == "table" then
+		hasAnyEffective = true
 		local tw = dc.TwoHandedSwordEffective
 		table.insert(lines, "--- TwoHandedSwordEffective ---")
+		table.insert(lines, string.format("Grade: %s", fmtDevScalar(tw.Grade)))
 		table.insert(lines, string.format("BaseDamage: %s", fmtDevNum(tw.BaseDamage)))
 		table.insert(lines, string.format("AttackIntervalSeconds: %s", fmtDevNum(tw.AttackIntervalSeconds)))
 		table.insert(lines, string.format("RangeStuds: %s", fmtDevNum(tw.RangeStuds)))
 		table.insert(lines, string.format("AngleDeg: %s", fmtDevNum(tw.AngleDeg)))
 		table.insert(lines, string.format("TargetLimit: %s", fmtDevNum(tw.TargetLimit)))
-		table.insert(lines, "SwordShieldEffective: --")
-		table.insert(lines, "BasicMagicEffective: --")
-		table.insert(lines, "SpearEffective: --")
-	else
+		table.insert(lines, string.format("th_sweep_damage: %s", formatSsUpgrade(tw.th_sweep_damage)))
+		table.insert(lines, string.format("th_sweep_range: %s", formatSsUpgrade(tw.th_sweep_range)))
+	end
+	if not hasAnyEffective then
 		table.insert(lines, "SwordShieldEffective: --")
 		table.insert(lines, "BasicMagicEffective: --")
 		table.insert(lines, "SpearEffective: --")
@@ -167,7 +170,6 @@ local TIMER_LERP_SPEED = 3
 local XP_FILL_COMPLETE_EPS = 0.002
 
 -- ---------------------------------------------------------------------------
--- 공통: 지수 스무딩 (매 프레임 안정적, tween 난사 없음)
 -- ---------------------------------------------------------------------------
 
 local function smoothToward(current, target, speed, dt)
@@ -218,7 +220,6 @@ function HUDClient.init()
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
 
-	-- Roblox 기본 체력 UI 억제 — HudState 대기보다 먼저 (대기 중 블로킹돼도 숨김 적용됨)
 	playerGui.ChildAdded:Connect(function(child)
 		if child.Name == "Health" and child:IsA("ScreenGui") then
 			child.Enabled = false
@@ -240,7 +241,6 @@ function HUDClient.init()
 
 	suppressDefaultRobloxHealthUi(nil)
 
-	-- ---- 표시/목표 상태 (Humanoid) — HudState 없어도 Humanoid 바인딩으로 기본 체력 표시 타입 유지 ----
 	local targetHealth = 0
 	local targetMaxHealth = 1
 	local targetHealthRatio = 0
@@ -413,7 +413,6 @@ function HUDClient.init()
 	local timerBarBg = timerBarRoot and timerBarRoot:FindFirstChild("TimerBarBG", true)
 	local stageLabel = timerBarRoot and timerBarRoot:FindFirstChild("StageLabel", true)
 
-	-- ---- 표시/목표 상태 (HudState) ----
 	local hudTargetLevel = 1
 	local hudTargetXp = 0
 	local hudTargetXpToNext = 1

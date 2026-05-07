@@ -76,6 +76,16 @@ local function buildDevCombat(player, progressionService, gameConfig)
 		dc[k] = type(v) == "number" and math.max(0, math.floor(v + 0.5)) or 0
 	end
 
+	local function hasActiveWeapon(targetWeaponId: string): boolean
+		if type(targetWeaponId) ~= "string" or targetWeaponId == "" then
+			return false
+		end
+		if type(activeWeaponsMap) == "table" and activeWeaponsMap[targetWeaponId] ~= nil then
+			return true
+		end
+		return weaponId == targetWeaponId
+	end
+
 	if weaponId == "SwordShield" then
 		dc.SwordShieldEffective = UpgradeData.getSwordShieldEffectiveCombat(
 			gameConfig,
@@ -85,15 +95,11 @@ local function buildDevCombat(player, progressionService, gameConfig)
 			droppedRelicId,
 			weaponGrade
 		)
-		dc.BasicMagicEffective = nil
-		dc.SpearEffective = nil
-		dc.TwoHandedSwordEffective = nil
 	elseif weaponId == "BasicMagic" then
 		dc.BasicMagicEffective = UpgradeData.getEffectiveCombatStats(gameConfig, upgrades)
-		dc.SwordShieldEffective = nil
-		dc.SpearEffective = nil
-		dc.TwoHandedSwordEffective = nil
-	elseif weaponId == "Spear" then
+	end
+
+	if hasActiveWeapon("Spear") then
 		local sp = WeaponProfiles.Spear
 		local spGrade = progressionService.getWeaponGradeFor(player, "Spear")
 		local eff = UpgradeData.getSpearEffectiveCombat(gameConfig, sp, upgrades, spGrade)
@@ -109,27 +115,24 @@ local function buildDevCombat(player, progressionService, gameConfig)
 			sp_thrust_damage = meta and meta.sp_thrust_damage or 0,
 			sp_thrust_range = meta and meta.sp_thrust_range or 0,
 		}
-		dc.SwordShieldEffective = nil
-		dc.BasicMagicEffective = nil
-		dc.TwoHandedSwordEffective = nil
-	elseif weaponId == "TwoHandedSword" then
+	end
+
+	if hasActiveWeapon("TwoHandedSword") then
 		local tw = WeaponProfiles.TwoHandedSword
-		local sw = tw and tw.Sweep
+		local twGrade = progressionService.getWeaponGradeFor(player, "TwoHandedSword")
+		local eff = UpgradeData.getTwoHandedSwordEffectiveCombat(gameConfig, tw, upgrades, twGrade)
+		local sw = type(eff) == "table" and eff.Sweep or nil
+		local meta = type(eff) == "table" and eff.Meta or nil
 		dc.TwoHandedSwordEffective = {
-			BaseDamage = tw and tw.BaseDamage or nil,
-			AttackIntervalSeconds = tw and tw.AttackIntervalSeconds or nil,
+			Grade = twGrade,
+			BaseDamage = sw and sw.BaseDamage or nil,
+			AttackIntervalSeconds = eff and eff.AttackIntervalSeconds or nil,
 			RangeStuds = sw and sw.RangeStuds or nil,
 			AngleDeg = sw and sw.AngleDeg or nil,
 			TargetLimit = sw and sw.TargetLimit or nil,
+			th_sweep_damage = meta and meta.th_sweep_damage or 0,
+			th_sweep_range = meta and meta.th_sweep_range or 0,
 		}
-		dc.SwordShieldEffective = nil
-		dc.BasicMagicEffective = nil
-		dc.SpearEffective = nil
-	else
-		dc.SwordShieldEffective = nil
-		dc.BasicMagicEffective = nil
-		dc.SpearEffective = nil
-		dc.TwoHandedSwordEffective = nil
 	end
 
 	return dc

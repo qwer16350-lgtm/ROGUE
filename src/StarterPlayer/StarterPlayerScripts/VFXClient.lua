@@ -11,33 +11,24 @@ local GameConfig = require(Shared:WaitForChild("GameConfig"))
 local VFXClient = {}
 
 local DEFAULT_EMIT = 1
---- true 면 VFXEvent 수신·프리팹 배치·burstParticles 상세 로그 출력
 local DEBUG_VFX_CLIENT_VERBOSE = false
 
--- 이전 단발(0.07+0.14초)과 동일한 총 길이 안에서 흰색 점멸 횟수
 local ENEMY_HIT_FLASH_TOTAL_SEC = 0.21
 local ENEMY_HIT_FLASH_PULSES = 3
 local ENEMY_HIT_FLASH_COLOR = Color3.fromRGB(255, 255, 255)
 
 local enemyHitFlashState = setmetatable({}, { __mode = "k" })
 
--- 플레이어가 적과 접촉해 피격될 때 캐릭터 전체에 입히는 빨간 점멸.
--- 적 피격 점멸과 동일한 펄스 길이/횟수를 차용 — 색상만 빨강.
--- 단일 BasePart 가 아니라 캐릭터 전체에 일관된 오버레이를 입히기 위해
--- Highlight 인스턴스의 FillTransparency 를 펄스로 토글한다.
 local PLAYER_HIT_FLASH_TOTAL_SEC = 0.21
 local PLAYER_HIT_FLASH_PULSES = 3
 local PLAYER_HIT_FLASH_COLOR = Color3.fromRGB(255, 0, 0)
--- 0 = 완전 빨강, 1 = 완전 투명. 0.35 → 강하게 보이되 캐릭터 실루엣 유지.
 local PLAYER_HIT_FLASH_PEAK_TRANSPARENCY = 0.35
 
 local playerHitFlashState = setmetatable({}, { __mode = "k" })
 local warnedMissingAttackVfxLifetime = false
--- FollowAttacker 일 때: AttackerUserId → 현재 공격 클론(신규 공격 시 이전 클론 제거)
 local activeAttackVfxByUserId = {}
 local attackFollowBindSerial = 0
 
--- true 면 Sweep/Thrust 초기 배치만 basePosition 그대로(방향 flat 유지). 팔로우는 일반 ATTACK 과 동일 경로.
 local DEBUG_SWORDSHIELD_ZERO_DISPLAY_OFFSET = false
 
 local EFFECTS = {
@@ -115,7 +106,6 @@ local function findPrefab(vfxRoot, cfg)
 	return nil
 end
 
---- RemoteEvent 페이로드의 Position/AttackForward 가 Vector3 대신 table 로 올 수 있어 정규화.
 local function coerceVector3(v): Vector3?
 	if typeof(v) == "Vector3" then
 		return v
@@ -142,7 +132,6 @@ local function warnMissingVfxAttackFolderOnce()
 	warn("[VFXClient] ReplicatedStorage.VFX 아래 ATTACK/Attack 폴더를 찾지 못했습니다. Studio에서 VFX 트리를 확인하세요.")
 end
 
---- VFX 공격 폴더 Studio 명명: ATTACK 또는 Attack (레거시 findPrefab 과 호환 위해 둘 다 시도).
 local function resolveVfxAttackFolder(vfxRoot)
 	local direct = vfxRoot:FindFirstChild("ATTACK") or vfxRoot:FindFirstChild("Attack")
 	if direct then
@@ -204,7 +193,6 @@ local function findSwordShieldPrefabInAttackFolder(folder, canonicalName: string
 	return nil
 end
 
---- Sweep: VFX/ATTACK/SwordShieldSweep — 기존 ATTACK 템플릿으로 fallback 없음.
 local function resolveSwordShieldSweepTemplate(vfxRoot)
 	local folder = resolveVfxAttackFolder(vfxRoot)
 	if not folder then
@@ -213,7 +201,6 @@ local function resolveSwordShieldSweepTemplate(vfxRoot)
 	return findSwordShieldPrefabInAttackFolder(folder, "SwordShieldSweep")
 end
 
---- Thrust: VFX/ATTACK/SwordShieldThrust — fallback 없음.
 local function resolveSwordShieldThrustTemplate(vfxRoot)
 	local folder = resolveVfxAttackFolder(vfxRoot)
 	if not folder then
@@ -306,9 +293,6 @@ local function scaleNumberSequenceByFactor(seq, k)
 	return NumberSequence.new(kps)
 end
 
---- 공격 반경 배율 k (= 실제 판정 반경 / 기준 반경)에 맞춘 1차 보정. 연출 가중 없음.
---- 지오메트리는 ScaleTo/Part Size로 k배; 입자·빔 등은 아래 속성도 k배로 “보이는 거리/두께”를 판정과 선형 정렬.
---- Speed·Acceleration만 k배: Lifetime은 동시에 k배하지 않음(전파 거리가 k²로 가는 것 방지).
 local function applyAttackVfxProportionalEffects(rootInstance, k)
 	if type(k) ~= "number" or k <= 0 or k == 1 then
 		return
@@ -400,8 +384,6 @@ local function getVfxReferenceRadiusStuds(rootInstance)
 	return nil
 end
 
---- SwordShield Sweep/Thrust 전용: 공격 반경(radiusForVisual, payload.Radius 기반) / VfxReferenceRadius(없으면 5).
---- Thrust 는 현재 균일 스케일(applyAttackVfxRangeScale). 향후 ThrustWidth / ThrustLength 축 분리 시 축별 스케일로 바꿀 수 있음.
 local DEFAULT_SWORDSHIELD_VFX_REFERENCE_RADIUS_STUDS = 5
 
 local function applySwordShieldAttackRangeVisualScale(clone, radiusStuds: number?, subtypeStr: string?)
@@ -489,7 +471,6 @@ local function tweenFadeOut(parts, duration)
 	end
 end
 
---- 디버그: Instance 의 Attributes 전부 문자열화 (키 정렬).
 local function debugFormatAttributes(inst: Instance): string
 	local attrs = inst:GetAttributes()
 	local keys = {}
@@ -649,11 +630,6 @@ local function startPivotRotation(part, initialCFrame, cfg)
 	end)
 end
 
---- FollowPart를 매 프레임 렌더 직전에 맞춤. Workspace에 둔 채 1인칭 가림 회피.
---- worldOffsetFromFollowPart 가 Vector3 이면 basePos = followPart.Position + offset (선택적; 기본 ATTACK 은 nil).
---- nil 이면 basePos = (followPart.CFrame * CFrame.new(cfg.FollowOffset)).Position — SwordShield 도 동일.
---- preserveAttackForward 가 비지 않으면 CFrame.lookAt 방향 후 rotCF 곱함 (nil 이면 위치만 맞춤).
---- @return { Disconnect: function } — UnbindFromRenderStep
 local function connectAttackFollowHrp(
 	rootInstance,
 	followPart,
@@ -730,8 +706,6 @@ local function connectAttackFollowHrp(
 	}
 end
 
---- AttackerUserId로 FollowPart를 찾아 Vfx 수명 동안 BindToRenderStep 팔로우 연결 (실패 시 잠시 재시도).
---- worldOffsetFromFollowPart: nil 이면 HRP 기준 기본 ATTACK 과 동일 (FollowOffset 적용).
 local function beginAttackFollow(
 	rootInstance,
 	cfg,
@@ -781,7 +755,6 @@ local function beginAttackFollow(
 	end)
 end
 
---- 이전 공격 클론 제거 (같은 공격자가 짧은 간격으로 쏠 때 겹침 방지)
 local function replacePreviousFollowAttackVfx(attackerUserId)
 	local prev = activeAttackVfxByUserId[attackerUserId]
 	if prev and prev.Parent then
@@ -809,7 +782,6 @@ local function applyScaleByAttackRangeIfNeeded(cfg, rootInstance, attackRadiusSt
 	applyAttackVfxRangeScale(rootInstance, attackRadiusStuds, ref)
 end
 
---- attack: Burst 후 VfxLifetime(초) 동안 팔로우 → 만료 시 정리 후 Destroy.
 local function scheduleAttackVfxLifecycle(rootInstance, cfg, followBundle)
 	task.spawn(function()
 		if cfg.UseBurst then
@@ -841,7 +813,6 @@ local function scheduleAttackVfxLifecycle(rootInstance, cfg, followBundle)
 	end)
 end
 
---- hit / death: Fade → Burst → Hold → FadeOut → follow 해제 → Destroy
 local function scheduleFadeHoldBurstDestroyLifecycle(rootInstance, cfg, followConn, fadeParts)
 	task.spawn(function()
 		local fadeIn = cfg.FadeIn or 0
@@ -886,7 +857,6 @@ local function scheduleFadeHoldBurstDestroyLifecycle(rootInstance, cfg, followCo
 	end)
 end
 
---- SwordShield Sweep/Thrust: AttackForward 를 XZ 평면 flatDir 로 두고, 표시 위치만 소폭 보정 (판정과 무관).
 local function swordShieldFlatForwardAndDisplayPos(
 	basePosition: Vector3,
 	rawForward: Vector3?,

@@ -107,7 +107,6 @@ function CombatService.init(
 		vfxEvent:FireAllClients(payload)
 	end
 
-	-- multi-weapon 대비: cooldown은 player + weaponId 단위로 저장
 	local lastAttackByPlayerWeapon: { [Player]: { [string]: number } } = {}
 	local function getLastAttack(player: Player, weaponId: string): number
 		local m = lastAttackByPlayerWeapon[player]
@@ -126,9 +125,11 @@ function CombatService.init(
 		m[weaponId] = t
 	end
 
-	-- SwordShield alternating state: player + weaponId 단위 분리 (요구사항)
 	local swordShieldNextIsThrust: { [Player]: { [string]: boolean } } = {}
 	local warnedUnknownActiveWeapon: { [string]: boolean } = {}
+	local warnedShieldSpikeAnchoredPart = false
+	local HEALTH_ORB_CHANCE_STACK_ATTR = "ho_Chance_increase_stack"
+	local HEALTH_ORB_CHANCE_BONUS_PER_STACK = 0.005
 
 	local effectiveWeaponId = RunWeaponResolver.resolveEffectiveWeaponId(gameConfig)
 
@@ -169,7 +170,6 @@ function CombatService.init(
 		return base
 	end
 
-	--- 타겟 확정 후 피해/처치 처리 (판정 분기 바깥 공통 로직)
 	local function applyDamageResolved(player: Player, entry, damage: number, sourceWeaponId: string)
 		local part = entry.part
 		if not part.Parent then
@@ -190,18 +190,28 @@ function CombatService.init(
 			fireVfx("death", hitPos)
 			waveService.recordKill()
 			local deathPos = part.Position
-			local dropChance = (healthPickupService and gameConfig.HealthOrbDropChance) or 0
-			if type(dropChance) ~= "number" or dropChance <= 0 then
-				dropChance = 0
+			local baseDropChance = (healthPickupService and gameConfig.HealthOrbDropChance) or 0
+			if type(baseDropChance) ~= "number" or baseDropChance <= 0 then
+				baseDropChance = 0
 			end
-			if dropChance > 0 and math.random() < dropChance then
+			local chanceStackRaw = player:GetAttribute(HEALTH_ORB_CHANCE_STACK_ATTR)
+			local chanceStack = 0
+			if type(chanceStackRaw) == "number" and chanceStackRaw > 0 then
+				chanceStack = math.max(0, math.floor(chanceStackRaw + 0.5))
+			end
+			local effectiveDropChance = math.clamp(
+				baseDropChance + HEALTH_ORB_CHANCE_BONUS_PER_STACK * chanceStack,
+				0,
+				1
+			)
+			if effectiveDropChance > 0 and math.random() < effectiveDropChance then
 				healthPickupService.spawnAt(hitPos, gameConfig)
 			else
 				xpPickupService.spawnAt(hitPos, xpDrop)
 			end
 
-			-- 기존 정책 유지(보수): 런 effective weapon 및 legacy weaponId가 SwordShield일 때만 드롭/릴릭 체스트 롤
-			if weaponDropService and sourceWeaponId == "SwordShield" and math.random() < getSwordShieldWeaponDropChance() then
+			-- Keep legacy policy: only SwordShield source weapon rolls weapon/relic drops.
+            if weaponDropService and sourceWeaponId == "SwordShield" and math.random() < getSwordShieldWeaponDropChance() then
 				local dropWeaponId = "SwordShield"
 				if type(weaponDropService.pickDropWeaponId) == "function" then
 					dropWeaponId = weaponDropService.pickDropWeaponId()
@@ -229,7 +239,6 @@ function CombatService.init(
 		end
 	end
 
-	--- apexDeg = 원뿔 꼭짓점 각(전체 각도). 전방축 forward 기준 대칭 원뿔.
 	local function inForwardCone(origin: Vector3, forward: Vector3, targetPos: Vector3, range: number, apexDeg: number): boolean
 		local v = targetPos - origin
 		local dist = v.Magnitude
@@ -259,7 +268,6 @@ function CombatService.init(
 		return r.Unit
 	end
 
-	--- Thrust 전용: XZ 평면 스트립 (forwardXZ·rightXZ 는 단위벡터, Y 성분 0).
 	local function inThrustStripXZ(
 		origin: Vector3,
 		forwardXZ: Vector3,
@@ -438,7 +446,6 @@ function CombatService.init(
 			end)
 		end
 
-		--- Sweep/Thrust attack VFX: 적 타점이 아닌 공격자 HRP (방향은 AttackForward 유지).
 		local attackVfxOrigin = root.Position
 		fireVfx("attack", attackVfxOrigin, nil, range, player.UserId, interval, subtype, forward)
 		if useThrust then
@@ -472,17 +479,34 @@ function CombatService.init(
 					if type(eff2) == "table" and eff2.sweepKnockback == true then
 						local force = eff2.knockbackForce
 						if type(force) ~= "number" or force <= 0 then
-							force = 60
+							force = 30
 						end
-						local offset = part.Position - root.Position
-						local dirXZ = Vector3.new(offset.X, 0, offset.Z)
-						if dirXZ.Magnitude < 1e-4 then
-							dirXZ = Vector3.new(forward.X, 0, forward.Z)
+						local knockbackDuration = eff2.knockbackDuration
+						if type(knockbackDuration) ~= "number" or knockbackDuration <= 0 then
+							knockbackDuration = 0.20
 						end
-						if dirXZ.Magnitude >= 1e-4 then
-							local dir = dirXZ.Unit
-							local v = part.AssemblyLinearVelocity
-							part.AssemblyLinearVelocity = Vector3.new(dir.X * force, v.Y, dir.Z * force)
+						if part.Anchored then
+							if warnedShieldSpikeAnchoredPart ~= true then
+								warn("[CombatService] shield_spike knockback skipped: enemy part is Anchored.")
+								warnedShieldSpikeAnchoredPart = true
+							end
+						else
+							local offset = part.Position - root.Position
+							local dirXZ = Vector3.new(offset.X, 0, offset.Z)
+							if dirXZ.Magnitude < 1e-4 then
+								dirXZ = Vector3.new(forward.X, 0, forward.Z)
+							end
+							if dirXZ.Magnitude >= 1e-4 then
+								local dir = dirXZ.Unit
+								local v = part.AssemblyLinearVelocity
+								part.AssemblyLinearVelocity = Vector3.new(dir.X * force, v.Y, dir.Z * force)
+								if type(entry.state) == "table" then
+									entry.state.knockbackUntil = math.max(
+										tonumber(entry.state.knockbackUntil) or 0,
+										now + knockbackDuration
+									)
+								end
+							end
 						end
 					end
 				end
@@ -595,15 +619,27 @@ function CombatService.init(
 		if type(sweep) ~= "table" then
 			return
 		end
-		local interval = type(profile.AttackIntervalSeconds) == "number" and profile.AttackIntervalSeconds or 1.6
+		local upgrades = progressionService.getUpgradeCounts(player)
+		local weaponGrade = progressionService.getWeaponGradeFor(player, weaponId)
+		local effective = upgradeData.getTwoHandedSwordEffectiveCombat(gameConfig, profile, upgrades, weaponGrade)
+		local effSweep = type(effective) == "table" and effective.Sweep or nil
+
+		local interval = type(effective) == "table" and type(effective.AttackIntervalSeconds) == "number"
+				and effective.AttackIntervalSeconds
+			or (type(profile.AttackIntervalSeconds) == "number" and profile.AttackIntervalSeconds or 1.6)
 		if interval <= 0 then
 			interval = 1.6
 		end
-		local damage = type(profile.BaseDamage) == "number" and profile.BaseDamage or 45
-		local range = type(sweep.RangeStuds) == "number" and sweep.RangeStuds or 12
-		local angle = type(sweep.AngleDeg) == "number" and sweep.AngleDeg or 180
+		local damage = type(effSweep) == "table" and type(effSweep.BaseDamage) == "number" and effSweep.BaseDamage
+			or (type(profile.BaseDamage) == "number" and profile.BaseDamage or 45)
+		local range = type(effSweep) == "table" and type(effSweep.RangeStuds) == "number" and effSweep.RangeStuds
+			or (type(sweep.RangeStuds) == "number" and sweep.RangeStuds or 12)
+		local angle = type(effSweep) == "table" and type(effSweep.AngleDeg) == "number" and effSweep.AngleDeg
+			or (type(sweep.AngleDeg) == "number" and sweep.AngleDeg or 180)
 		local targetLimit = nil
-		if type(sweep.TargetLimit) == "number" then
+		if type(effSweep) == "table" and type(effSweep.TargetLimit) == "number" then
+			targetLimit = math.max(1, math.floor(effSweep.TargetLimit + 0.5))
+		elseif type(sweep.TargetLimit) == "number" then
 			targetLimit = math.max(1, math.floor(sweep.TargetLimit))
 		end
 
@@ -689,7 +725,6 @@ function CombatService.init(
 				continue
 			end
 
-			-- 핵심 조건: activeWeapons가 1개 이상이면 그것만 실행(중복 방지)
 			local aw = progressionService.getActiveWeapons(player)
 			local hasActive = type(aw) == "table" and next(aw) ~= nil
 			if hasActive then
@@ -710,7 +745,6 @@ function CombatService.init(
 					end
 				end
 			else
-				-- activeWeapons가 없거나 비어있을 때만 legacy fallback
 				if fallbackWeaponId == "SwordShield" then
 					heartbeatSwordShieldWeapon(player, "SwordShield", root, entries, now)
 				else

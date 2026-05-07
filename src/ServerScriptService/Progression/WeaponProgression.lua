@@ -22,7 +22,6 @@ local function normalizeGrade(raw): string
 	return "Normal"
 end
 
---- resolveEffectiveWeaponId 결과 eff 및 디버그 오버라이드 플래그로 weapon 필드를 보정한다.
 function WeaponProgression.ensureWeaponFields(state: any, eff: string, hasOverride: boolean)
 	if hasOverride then
 		state.weaponId = eff

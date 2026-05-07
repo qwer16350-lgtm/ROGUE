@@ -5,6 +5,8 @@ local XpPickupService = {}
 local orbs = {}
 local folder = nil
 local orbDiameter = 1.2
+local MAGNET_RANGE_STACK_ATTR = "mg_Range_increase_stack"
+local MAGNET_RANGE_MUL_PER_STACK = 0.20
 
 function XpPickupService.spawnAt(position, amount)
 	if type(amount) ~= "number" or amount <= 0 then
@@ -104,6 +106,18 @@ function XpPickupService.init(players, runService, progressionService, gameConfi
 		return bestPlayer, bestRoot, bestDist
 	end
 
+	local function getEffectiveMagnetRadiusForPlayer(player)
+		if not player then
+			return magnetRadius
+		end
+		local raw = player:GetAttribute(MAGNET_RANGE_STACK_ATTR)
+		local stack = 0
+		if type(raw) == "number" and raw > 0 then
+			stack = math.max(0, math.floor(raw + 0.5))
+		end
+		return magnetRadius * (1 + MAGNET_RANGE_MUL_PER_STACK * stack)
+	end
+
 	local function applyIdleBob(orb, part)
 		local anchor = orb.idleAnchorPosition
 		if not anchor then
@@ -143,7 +157,8 @@ function XpPickupService.init(players, runService, progressionService, gameConfi
 				continue
 			end
 
-			if dist <= magnetRadius then
+			local effectiveMagnetRadius = getEffectiveMagnetRadiusForPlayer(nearestPlayer)
+			if dist <= effectiveMagnetRadius then
 				local targetPos = nearestRoot.Position
 				local offset = targetPos - pos
 				local len = offset.Magnitude

@@ -33,13 +33,10 @@ local sess = {
 	killCount = 0,
 	lastSpawnTime = 0,
 	lastEliteSpawnTime = 0,
-	--- startSession 시점에만 갱신. Heartbeat에서 StageData를 다시 읽지 않음.
 	spawnProfile = nil,
 	--- Resolved once per session via SpawnRules; immutable until next startSession.
 	gruntTuning = nil,
-	--- 현재 세션의 floor 인덱스 (StageBootstrap 이 startSession 으로 전달).
 	floor = nil,
-	--- RunConstants.MaxFloor 폴백. 향후 RunContext 가 다른 max 를 줄 가능성 대비 sess 에 보관.
 	maxFloor = nil,
 }
 
@@ -67,8 +64,6 @@ function WaveService.bindHudPushContext(deps)
 	ctx.gameConfig = deps.gameConfig
 end
 
---- Step 4 의 StageBootstrap 이 호출. WaveService 가 StageFlow 에 finishSession outcome 을
---- 알릴 수 있도록 주입. 미주입 상태에서도 finishSession 은 안전하게 동작 (optional guard).
 function WaveService.bindStageFlow(stageFlow)
 	ctx.stageFlow = stageFlow
 end
@@ -175,8 +170,6 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 		local maxFloor = sess.maxFloor or RunConstants.MaxFloor
 		local isLastFloor = floorIdx >= maxFloor
 		local cleared = bossKilled == true
-		--- CanAdvance: 보스 처치 + 마지막 층이 아닐 때만 true.
-		--- 마지막 층 클리어 시에는 자동 lobby 귀환이 정답이므로 false.
 		local canAdvance = cleared and not isLastFloor
 		local outcome = cleared and RunConstants.Outcome.Clear or RunConstants.Outcome.Fail
 

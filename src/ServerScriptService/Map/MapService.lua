@@ -6,10 +6,6 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local GenerationRules = require(Config:WaitForChild("GenerationRules"))
 
--- 축 분리에 따른 직접 의존:
---   BiomeRegistry = 자산 풀 / 런타임 네이밍 (biome 축)
---   StageData     = 좌표 루트 / spawn·origin (stage 축)
--- BiomeService 는 더 이상 이 파일에서 참조하지 않는다.
 local BiomeRegistry = require(Config:WaitForChild("BiomeRegistry"))
 local StageData = require(Shared:WaitForChild("StageData"))
 
@@ -64,17 +60,11 @@ local BOTTLENECK_MIN_GRID_DISTANCE = 2
 local OPEN_TILE_Y_OFFSET = 3.5
 
 --- Y-axis yaw options applied per tile clone on placement.
---- 90° steps so square tile art stays aligned to the grid.
 local TILE_YAW_OPTIONS_DEG = { 0, 90, 180, 270 }
 
 --- Y-axis yaw options applied per boundary segment after its ring-tangent
---- orientation is computed. 30° steps with range ±120°.
 local BOUNDARY_YAW_OPTIONS_DEG = { -120, -90, -60, -30, 0, 30, 60, 90 }
 
---- Grassland 전용 레거시 청소 경로.
---- 구 버전은 Structure_Grassland_Bottleneck_Current 를 Workspace.Map.Structures 아래에 두었다.
---- 현재는 Tile_Grassland_Bottleneck_* 를 Workspace.Map.Ground 로 배치하므로 오래된 인스턴스를
---- 제거해 이중 렌더를 막는다. Desert 등 다른 biome 에는 해당 없음(no-op).
 local LEGACY_BOTTLENECK_RUNTIME_NAME = "Structure_Grassland_Bottleneck_Current"
 
 ----------------------------------------------------------------
@@ -82,7 +72,6 @@ local LEGACY_BOTTLENECK_RUNTIME_NAME = "Structure_Grassland_Bottleneck_Current"
 ----------------------------------------------------------------
 
 --- Tile markers sit at tile centers, so the real field footprint is wider
---- than the marker bounding box by one tile on each side → +TILE_SIZE_FOR_FIELD total.
 local TILE_SIZE_FOR_FIELD = 64
 
 local BOUNDARY_SUBFOLDER = "Boundaries"
@@ -129,7 +118,6 @@ local function ensureFolder(parent, name)
 end
 
 --- Pick one angle (degrees) from `optionsDeg` uniformly and return it in radians.
---- Empty table → 0 rad (no-op) so callers can't divide by zero on a missing config.
 local function pickYawRadians(optionsDeg: { number }): number
 	if #optionsDeg == 0 then
 		return 0
@@ -447,17 +435,7 @@ local function pruneRuntimeTiles(outFolder: Instance, prefix: string)
 end
 
 --- Biome-agnostic cleanup for stage transitions.
---- 이전 stage 의 biome prefix 가 다른 경우 `pruneRuntimeTiles(prefix=...)` 만으로는
---- 잔존 클론을 못 잡는다(예: Grassland→Desert 전환 시 Tile_Grassland_*_Current 가 남음).
---- 이를 막기 위해 Ground / Bounds / Structures 세 폴더 하위에서 이름에 "_Current"
---- 토큰을 포함한 모든 자식을 제거한다. 다른 Map 하위 폴더(RuntimeMarkers / Decor /
---- SpawnPoints 등)는 건드리지 않는다.
 ---
---- 호환성 전제: 모든 biome 의 RuntimeNames (Open / Bottleneck / Boundary) 는 반드시
---- "_Current" 토큰을 포함해야 한다 (BiomeRegistry 규약). 향후 다른 토큰을 쓰는 biome 을
---- 추가하려면 이 prune 정책도 같이 갱신해야 한다.
---- 또한 정적 자산(예: Ground_Base) 이름에 "_Current" 를 넣지 말아야 한다 —
---- 실수로 삭제될 수 있음.
 local function pruneAllRuntimeCurrent(mapFolder: Instance)
 	for _, folderName in ipairs({ "Ground", "Bounds", "Structures" }) do
 		local f = mapFolder:FindFirstChild(folderName)
@@ -754,10 +732,6 @@ end
 -- Entry point
 ----------------------------------------------------------------
 
---- stageIndex 생략 시 1층으로 폴백 (StageBootstrap 외부에서의 직접 호출 호환).
---- 이 함수는 stage 축(좌표)과 biome 축(자산) 을 서로 다른 문자열 키로 해석한다:
----   biomeName      → BiomeRegistry[...]  →  ServerStorage.MapAssets.Biomes.<AssetFolder>
----   markerRootName → Workspace.Map.RuntimeMarkers.<markerRootName>
 function MapService.GenerateMap(stageIndex: number?)
 	_openDumped = false
 	_bottleneckDumped = false
@@ -768,7 +742,6 @@ function MapService.GenerateMap(stageIndex: number?)
 
 	local idx = stageIndex or 1
 
-	-- stage 축: 좌표 루트 / biome 축: 자산 풀. 두 축은 독립적으로 해석한다.
 	local biomeName = StageData.getBiomeName(idx)
 	local markerRootName = StageData.getMarkerRootName(idx)
 	local biomeData = BiomeRegistry[biomeName]
@@ -784,7 +757,6 @@ function MapService.GenerateMap(stageIndex: number?)
 		return
 	end
 
-	-- AssetFolder 는 biome 축 전용 (ServerStorage 자산 lookup). marker 조회에는 사용하지 않는다.
 	local assetFolderName = biomeData.AssetFolder
 
 	-- Resolve biome-provided template lists and runtime clone name prefixes.
@@ -835,8 +807,6 @@ function MapService.GenerateMap(stageIndex: number?)
 
 	local mapFolder = ensureFolder(Workspace, "Map")
 
-	-- Stage 전환 시 이전 biome 잔존 클론을 biome 구분 없이 전수 제거.
-	-- 기존 pruneRuntimeTiles(prefix=...) 호출은 아래에서 그대로 유지 (no-op 중복, 최소 diff 목적).
 	pruneAllRuntimeCurrent(mapFolder)
 
 	local runtimeMarkersRoot = mapFolder:FindFirstChild("RuntimeMarkers")
@@ -848,8 +818,6 @@ function MapService.GenerateMap(stageIndex: number?)
 		return
 	end
 
-	--- Markers 는 stage 축에 소속된다 — `Workspace.Map.RuntimeMarkers.<markerRootName>` 하위의
-	--- Marker_Tile_* 좌표를 읽는다. biome 과는 독립적으로 stage 마다 고유한 좌표 루트를 가진다.
 	local runtimeMarkers = runtimeMarkersRoot:FindFirstChild(markerRootName)
 	if not runtimeMarkers then
 		warn(string.format(

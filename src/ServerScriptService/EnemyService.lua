@@ -188,6 +188,7 @@ function EnemyService.init(players, runService, gameConfig)
 	end
 
 	runService.Heartbeat:Connect(function(dt)
+		local now = tick()
 		local speed = gameConfig.EnemyBaseSpeed
 		local usePhysics = gameConfig.EnemyPartCanCollide
 
@@ -203,11 +204,14 @@ function EnemyService.init(players, runService, gameConfig)
 					if usePhysics and not part.Anchored then
 						local flat = Vector3.new(delta.X, 0, delta.Z)
 						local spawnY = (entry.state and entry.state.spawnY) or part.Position.Y
-						if flat.Magnitude > 0.5 then
-							local dir = flat.Unit
-							part.AssemblyLinearVelocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
-						else
-							part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+						local knockbackUntil = tonumber(entry.state and entry.state.knockbackUntil) or 0
+						if now >= knockbackUntil then
+							if flat.Magnitude > 0.5 then
+								local dir = flat.Unit
+								part.AssemblyLinearVelocity = Vector3.new(dir.X * speed, 0, dir.Z * speed)
+							else
+								part.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+							end
 						end
 						part.AssemblyAngularVelocity = Vector3.zero
 						local p = part.Position

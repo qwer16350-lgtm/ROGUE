@@ -1,10 +1,31 @@
---- 레벨업 Upgrade 선택지 생성 (pending / Remote / Player 무관 순수 로직)
 
 local UpgradeOfferBuilder = {}
 
 local SPEAR_CHOICE_IDS = {
 	"sp_thrust_damage",
 	"sp_thrust_range",
+	"sp_common_cooldown",
+}
+local TWO_HANDED_SWORD_CHOICE_IDS = {
+	"th_sweep_damage",
+	"th_sweep_range",
+	"th_common_cooldown",
+	"th_sweep_angle",
+}
+local ATTACK_TYPE_COMMON_CHOICE_IDS = {
+	co_thrust_damage = true,
+	co_sweep_damage = true,
+	co_thrust_range = true,
+	co_sweep_range = true,
+	co_common_cooldown = true,
+}
+local PLAYER_SYSTEM_COMMON_CHOICE_IDS = {
+	"ab_xp_increase",
+	"ab_Health_increase",
+	"ab_Speed_increase",
+	"mg_Range_increase",
+	"ho_Amount_increase",
+	"ho_Chance_increase",
 }
 
 local function hasActiveSpear(activeWeapons): boolean
@@ -12,6 +33,27 @@ local function hasActiveSpear(activeWeapons): boolean
 		return false
 	end
 	return type(activeWeapons.Spear) == "table"
+end
+
+local function hasActiveTwoHandedSword(activeWeapons): boolean
+	if type(activeWeapons) ~= "table" then
+		return false
+	end
+	return type(activeWeapons.TwoHandedSword) == "table"
+end
+
+local function hasActiveSwordShield(activeWeapons): boolean
+	if type(activeWeapons) ~= "table" then
+		return false
+	end
+	return type(activeWeapons.SwordShield) == "table"
+end
+
+local function hasActiveBasicMagic(activeWeapons): boolean
+	if type(activeWeapons) ~= "table" then
+		return false
+	end
+	return type(activeWeapons.BasicMagic) == "table"
 end
 
 local function appendSpearChoicesIfOwned(pool, upgradeData, activeWeapons)
@@ -41,6 +83,130 @@ local function appendSpearChoicesIfOwned(pool, upgradeData, activeWeapons)
 	end
 end
 
+local function appendTwoHandedSwordChoicesIfOwned(pool, upgradeData, activeWeapons)
+	if not hasActiveTwoHandedSword(activeWeapons) then
+		return
+	end
+	if type(upgradeData) ~= "table" then
+		return
+	end
+	if type(upgradeData.getChoiceForDefinition) ~= "function" then
+		return
+	end
+	local exists = {}
+	for _, row in ipairs(pool) do
+		if type(row) == "table" and type(row.Id) == "string" then
+			exists[row.Id] = true
+		end
+	end
+	for _, choiceId in ipairs(TWO_HANDED_SWORD_CHOICE_IDS) do
+		if not exists[choiceId] then
+			local row = upgradeData.getChoiceForDefinition(choiceId)
+			if type(row) == "table" and type(row.Id) == "string" and type(row.Label) == "string" then
+				table.insert(pool, { Id = row.Id, Label = row.Label })
+				exists[row.Id] = true
+			end
+		end
+	end
+end
+
+-- AttackTypeCommon damage/range choices are appended together by active weapon eligibility.
+local function appendAttackTypeCommonChoicesIfEligible(pool, upgradeData, activeWeapons)
+	if type(upgradeData) ~= "table" then
+		return
+	end
+	if type(upgradeData.getChoiceForDefinition) ~= "function" then
+		return
+	end
+
+	local hasThrustAttack = hasActiveSpear(activeWeapons) or hasActiveSwordShield(activeWeapons)
+	local hasSweepAttack = hasActiveTwoHandedSword(activeWeapons) or hasActiveSwordShield(activeWeapons)
+	local hasAnyAttackWeapon = hasThrustAttack or hasSweepAttack or hasActiveBasicMagic(activeWeapons)
+
+	if not hasAnyAttackWeapon then
+		return
+	end
+
+	local exists = {}
+	for _, row in ipairs(pool) do
+		if type(row) == "table" and type(row.Id) == "string" then
+			exists[row.Id] = true
+		end
+	end
+
+	if hasThrustAttack and not exists["co_thrust_damage"] then
+		local row = upgradeData.getChoiceForDefinition("co_thrust_damage")
+		if type(row) == "table" and type(row.Id) == "string" and type(row.Label) == "string" then
+			if ATTACK_TYPE_COMMON_CHOICE_IDS[row.Id] == true then
+				table.insert(pool, { Id = row.Id, Label = row.Label })
+				exists[row.Id] = true
+			end
+		end
+	end
+	if hasThrustAttack and not exists["co_thrust_range"] then
+		local row = upgradeData.getChoiceForDefinition("co_thrust_range")
+		if type(row) == "table" and type(row.Id) == "string" and type(row.Label) == "string" then
+			if ATTACK_TYPE_COMMON_CHOICE_IDS[row.Id] == true then
+				table.insert(pool, { Id = row.Id, Label = row.Label })
+				exists[row.Id] = true
+			end
+		end
+	end
+
+	if hasSweepAttack and not exists["co_sweep_damage"] then
+		local row = upgradeData.getChoiceForDefinition("co_sweep_damage")
+		if type(row) == "table" and type(row.Id) == "string" and type(row.Label) == "string" then
+			if ATTACK_TYPE_COMMON_CHOICE_IDS[row.Id] == true then
+				table.insert(pool, { Id = row.Id, Label = row.Label })
+				exists[row.Id] = true
+			end
+		end
+	end
+	if hasSweepAttack and not exists["co_sweep_range"] then
+		local row = upgradeData.getChoiceForDefinition("co_sweep_range")
+		if type(row) == "table" and type(row.Id) == "string" and type(row.Label) == "string" then
+			if ATTACK_TYPE_COMMON_CHOICE_IDS[row.Id] == true then
+				table.insert(pool, { Id = row.Id, Label = row.Label })
+				exists[row.Id] = true
+			end
+		end
+	end
+
+	if hasAnyAttackWeapon and not exists["co_common_cooldown"] then
+		local row = upgradeData.getChoiceForDefinition("co_common_cooldown")
+		if type(row) == "table" and type(row.Id) == "string" and type(row.Label) == "string" then
+			if ATTACK_TYPE_COMMON_CHOICE_IDS[row.Id] == true then
+				table.insert(pool, { Id = row.Id, Label = row.Label })
+				exists[row.Id] = true
+			end
+		end
+	end
+end
+
+local function appendPlayerSystemCommonChoices(pool, upgradeData)
+	if type(upgradeData) ~= "table" then
+		return
+	end
+	if type(upgradeData.getChoiceForDefinition) ~= "function" then
+		return
+	end
+	local exists = {}
+	for _, row in ipairs(pool) do
+		if type(row) == "table" and type(row.Id) == "string" then
+			exists[row.Id] = true
+		end
+	end
+	for _, choiceId in ipairs(PLAYER_SYSTEM_COMMON_CHOICE_IDS) do
+		if not exists[choiceId] then
+			local row = upgradeData.getChoiceForDefinition(choiceId)
+			if type(row) == "table" and type(row.Id) == "string" and type(row.Label) == "string" then
+				table.insert(pool, { Id = row.Id, Label = row.Label })
+				exists[row.Id] = true
+			end
+		end
+	end
+end
+
 local function weightForChoice(choice: { Id: string, Label: string }, weightsMap: { [string]: number }): number
 	local w = weightsMap[choice.Id]
 	if type(w) == "number" and w > 0 then
@@ -49,7 +215,6 @@ local function weightForChoice(choice: { Id: string, Label: string }, weightsMap
 	return 1
 end
 
---- SwordShield 풀에서 가중치 기반 비복원 추출 3개.
 function UpgradeOfferBuilder.weightedPickThreeSwordShieldChoices(
 	pool: { { Id: string, Label: string } },
 	startingRelicId: string?,
@@ -107,7 +272,6 @@ function UpgradeOfferBuilder.weightedPickThreeSwordShieldChoices(
 	return picked
 end
 
---- poolWeaponId 는 "SwordShield" | "BasicMagic" 만 가정 (호출부에서 effective 로 보정).
 function UpgradeOfferBuilder.buildUpgradeOffer(
 	poolWeaponId: string,
 	startingRelicId: string?,
@@ -126,6 +290,9 @@ function UpgradeOfferBuilder.buildUpgradeOffer(
 			table.insert(pool, { Id = choice.Id, Label = choice.Label })
 		end
 		appendSpearChoicesIfOwned(pool, upgradeData, activeWeapons)
+		appendTwoHandedSwordChoicesIfOwned(pool, upgradeData, activeWeapons)
+		appendAttackTypeCommonChoicesIfEligible(pool, upgradeData, activeWeapons)
+		appendPlayerSystemCommonChoices(pool, upgradeData)
 		local picked = UpgradeOfferBuilder.weightedPickThreeSwordShieldChoices(
 			pool,
 			startingRelicId,
@@ -143,6 +310,9 @@ function UpgradeOfferBuilder.buildUpgradeOffer(
 		table.insert(picked, { Id = choice.Id, Label = choice.Label })
 	end
 	appendSpearChoicesIfOwned(picked, upgradeData, activeWeapons)
+	appendTwoHandedSwordChoicesIfOwned(picked, upgradeData, activeWeapons)
+	appendAttackTypeCommonChoicesIfEligible(picked, upgradeData, activeWeapons)
+	appendPlayerSystemCommonChoices(picked, upgradeData)
 	local allowed = {}
 	for _, row in ipairs(picked) do
 		allowed[row.Id] = true

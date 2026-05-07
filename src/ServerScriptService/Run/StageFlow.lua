@@ -1,7 +1,4 @@
---- StageFlow — Remotes.StageFlowRequest 단일 처리 + WaveService 의 finishSession 후속 처리.
---- WaveService 바깥에서 floor 간 흐름(다음 층 / 로비 귀환 / 자동 귀환) 을 담당하는 상위 orchestration.
 ---
---- 책임 외 (안 함): 텔레포트 직접 호출(Teleport 모듈 위임), GUI(ResultClient), enemy/맵 정리.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -12,10 +9,7 @@ local RunConstants = require(
 local StageFlow = {}
 
 ------------------------------------------------------------
--- Tunables (모듈 상단 상수 — 다른 곳에 흩어두지 않음)
 ------------------------------------------------------------
---- 자동 lobby 귀환 발동까지의 지연(초). Fail / 마지막 층 클리어 시.
---- ResultClient 가 결과창을 표시하는 시간을 고려해 조정. 너무 짧으면 결과창이 거의 보이지 않음.
 local AUTO_RETURN_DELAY_SECONDS = 4
 
 ------------------------------------------------------------
@@ -37,7 +31,6 @@ local sessionState = {
 ------------------------------------------------------------
 -- Helpers
 ------------------------------------------------------------
---- 표준 StageFlowAction 키만 허용. 그 외 nil.
 local function normalizeAction(action)
 	if type(action) ~= "string" then
 		return nil
@@ -118,12 +111,6 @@ end
 ------------------------------------------------------------
 -- Public API
 ------------------------------------------------------------
---- WaveService 가 finishSession 직후 호출.
---- outcome 은 RunConstants.Outcome 의 값 ("Clear" | "Fail").
---- 자동 lobby 귀환 조건:
----   * Fail → 항상 자동
----   * Clear AND currentFloor == maxFloor → 자동
---- Clear AND not last floor → 자동 안 함, ResultClient 의 NextFloor / ReturnToLobby 입력 대기.
 function StageFlow.onSessionFinished(outcome)
 	sessionState.finished = true
 	sessionState.outcome = outcome

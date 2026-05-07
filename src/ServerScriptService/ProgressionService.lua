@@ -11,13 +11,9 @@ local levelUpChoiceEvent = nil
 local gameConfigRef = nil
 local immediateHudPush = nil
 
---- Progression: 레벨업 풀은 state.weaponId 가 SwordShield 일 때만 SwordShield 7종 풀 사용.
 
---- [Player] = { [choiceId: string]: true } — 직전 레벨업에서 제시된 선택지만 true
 local pendingLevelUpOfferByPlayer: { [Player]: { [string]: boolean } } = {}
---- Starting Relic 3택 pending (Relic Id 만 허용). LevelUp pending 과 동시에 두지 않음.
 local pendingStartingRelicByPlayer: { [Player]: { [string]: boolean } } = {}
---- Step 4-1: Dropped Relic 3택 pending (고정 Id 만 허용).
 local pendingDroppedRelicByPlayer: { [Player]: { [string]: boolean } } = {}
 
 local function progressionVerbose(): boolean
@@ -27,6 +23,15 @@ end
 
 local relicDataModule = nil
 local weaponPickupNotifyEvent: RemoteEvent? = nil
+local HEALTH_UPGRADE_ID = "ab_Health_increase"
+local HEALTH_UPGRADE_BONUS_PER_STACK = 20
+local XP_UPGRADE_ID = "ab_xp_increase"
+local XP_UPGRADE_MUL_PER_STACK = 0.05
+local SPEED_UPGRADE_ID = "ab_Speed_increase"
+local SPEED_UPGRADE_MUL_PER_STACK = 0.03
+local MAGNET_RANGE_UPGRADE_ID = "mg_Range_increase"
+local HEALTH_ORB_AMOUNT_UPGRADE_ID = "ho_Amount_increase"
+local HEALTH_ORB_CHANCE_UPGRADE_ID = "ho_Chance_increase"
 
 local function fireWeaponPickupNotify(player: Player, kind: string)
 	if weaponPickupNotifyEvent then
@@ -47,13 +52,11 @@ function ProgressionService.getWeaponGrade(player): string?
 	return WeaponProgression.getWeaponGrade(state)
 end
 
--- 신규: 무기별 grade 조회 (activeWeapons 우선)
 function ProgressionService.getWeaponGradeFor(player, weaponId: string): string
 	local state = progressByPlayer[player]
 	return WeaponProgression.getWeaponGradeFor(state, weaponId)
 end
 
--- 신규: activeWeapons 조회 (없으면 nil)
 function ProgressionService.getActiveWeapons(player): { [string]: { weaponId: string, grade: string } }?
 	local state = progressByPlayer[player]
 	if not state then
@@ -90,7 +93,6 @@ local function xpRequiredForLevel(level)
 	return gameConfigRef.XpRequiredPerLevelBase * level
 end
 
---- module init 이후 호출 전까지 빈 테이블 폴백
 local upgradeDataModule = nil
 
 local function defaultUpgradeZeros()
@@ -150,6 +152,182 @@ function ProgressionService.getUpgradeCounts(player)
 		return defaultUpgradeZeros()
 	end
 	return state.upgrades
+end
+
+local function getHealthUpgradeStackFromState(state): number
+	if type(state) ~= "table" or type(state.upgrades) ~= "table" then
+		return 0
+	end
+	local raw = state.upgrades[HEALTH_UPGRADE_ID]
+	if type(raw) ~= "number" or raw <= 0 then
+		return 0
+	end
+	return math.max(0, math.floor(raw + 0.5))
+end
+
+local function getXpUpgradeStackFromState(state): number
+	if type(state) ~= "table" or type(state.upgrades) ~= "table" then
+		return 0
+	end
+	local raw = state.upgrades[XP_UPGRADE_ID]
+	if type(raw) ~= "number" or raw <= 0 then
+		return 0
+	end
+	return math.max(0, math.floor(raw + 0.5))
+end
+
+local function getSpeedUpgradeStackFromState(state): number
+	if type(state) ~= "table" or type(state.upgrades) ~= "table" then
+		return 0
+	end
+	local raw = state.upgrades[SPEED_UPGRADE_ID]
+	if type(raw) ~= "number" or raw <= 0 then
+		return 0
+	end
+	return math.max(0, math.floor(raw + 0.5))
+end
+
+local function getMagnetRangeUpgradeStackFromState(state): number
+	if type(state) ~= "table" or type(state.upgrades) ~= "table" then
+		return 0
+	end
+	local raw = state.upgrades[MAGNET_RANGE_UPGRADE_ID]
+	if type(raw) ~= "number" or raw <= 0 then
+		return 0
+	end
+	return math.max(0, math.floor(raw + 0.5))
+end
+
+local function getHealthOrbAmountUpgradeStackFromState(state): number
+	if type(state) ~= "table" or type(state.upgrades) ~= "table" then
+		return 0
+	end
+	local raw = state.upgrades[HEALTH_ORB_AMOUNT_UPGRADE_ID]
+	if type(raw) ~= "number" or raw <= 0 then
+		return 0
+	end
+	return math.max(0, math.floor(raw + 0.5))
+end
+
+local function getHealthOrbChanceUpgradeStackFromState(state): number
+	if type(state) ~= "table" or type(state.upgrades) ~= "table" then
+		return 0
+	end
+	local raw = state.upgrades[HEALTH_ORB_CHANCE_UPGRADE_ID]
+	if type(raw) ~= "number" or raw <= 0 then
+		return 0
+	end
+	return math.max(0, math.floor(raw + 0.5))
+end
+
+function ProgressionService.getEffectiveMaxHealthFor(player, baseMaxHealth: number): number
+	local base = baseMaxHealth
+	if type(base) ~= "number" or base <= 0 then
+		base = 100
+	end
+	local state = progressByPlayer[player]
+	local stack = getHealthUpgradeStackFromState(state)
+	local effective = base + HEALTH_UPGRADE_BONUS_PER_STACK * stack
+	return math.max(1, effective)
+end
+
+function ProgressionService.getEffectiveWalkSpeedFor(player, baseWalkSpeed: number): number
+	local base = tonumber(baseWalkSpeed) or 16
+	if base <= 0 then
+		base = 16
+	end
+	local state = progressByPlayer[player]
+	local stack = getSpeedUpgradeStackFromState(state)
+	local effective = base * (1 + SPEED_UPGRADE_MUL_PER_STACK * stack)
+	return math.max(0, effective)
+end
+
+local function applyHealthUpgradeToCurrentCharacter(player, state)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		return
+	end
+	local baseMax = gameConfigRef and gameConfigRef.PlayerBaseHealth or 100
+	if type(baseMax) ~= "number" or baseMax <= 0 then
+		baseMax = 100
+	end
+	local oldMax = hum.MaxHealth
+	if type(oldMax) ~= "number" or oldMax <= 0 then
+		oldMax = baseMax
+	end
+	local stack = getHealthUpgradeStackFromState(state)
+	local newMax = math.max(1, baseMax + HEALTH_UPGRADE_BONUS_PER_STACK * stack)
+	local delta = newMax - oldMax
+	hum.MaxHealth = newMax
+	local oldHealth = hum.Health
+	if type(oldHealth) ~= "number" or oldHealth < 0 then
+		oldHealth = 0
+	end
+	hum.Health = math.clamp(oldHealth + math.max(0, delta), 0, newMax)
+end
+
+local function applySpeedUpgradeToCurrentCharacter(player, state)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		return
+	end
+	local baseWalkSpeed = gameConfigRef and gameConfigRef.PlayerBaseWalkSpeed or 16
+	if type(baseWalkSpeed) ~= "number" or baseWalkSpeed <= 0 then
+		baseWalkSpeed = 16
+	end
+	local stack = getSpeedUpgradeStackFromState(state)
+	local effectiveWalkSpeed = baseWalkSpeed * (1 + SPEED_UPGRADE_MUL_PER_STACK * stack)
+	hum.WalkSpeed = math.max(0, effectiveWalkSpeed)
+end
+
+local function syncHealthUpgradeStackAttribute(player, state)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	player:SetAttribute("ab_Health_increase_stack", getHealthUpgradeStackFromState(state))
+end
+
+local function syncXpUpgradeStackAttribute(player, state)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	player:SetAttribute("ab_xp_increase_stack", getXpUpgradeStackFromState(state))
+end
+
+local function syncSpeedUpgradeStackAttribute(player, state)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	player:SetAttribute("ab_Speed_increase_stack", getSpeedUpgradeStackFromState(state))
+end
+
+local function syncMagnetRangeUpgradeStackAttribute(player, state)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	player:SetAttribute("mg_Range_increase_stack", getMagnetRangeUpgradeStackFromState(state))
+end
+
+local function syncHealthOrbAmountUpgradeStackAttribute(player, state)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	player:SetAttribute("ho_Amount_increase_stack", getHealthOrbAmountUpgradeStackFromState(state))
+end
+
+local function syncHealthOrbChanceUpgradeStackAttribute(player, state)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	player:SetAttribute("ho_Chance_increase_stack", getHealthOrbChanceUpgradeStackFromState(state))
 end
 
 local function buildOfferForPlayer(player): ({ { Id: string, Label: string } }, { [string]: boolean })
@@ -255,7 +433,6 @@ local function sanitizeBasicMagicRelicState(player: Player, s)
 	if s.weaponId ~= "BasicMagic" then
 		return
 	end
-	--- BasicMagic 런: SwordShield 전용 Starting/Dropped Relic 비활성 — 스테일 필드·pending 제거
 	s.startingRelicId = nil
 	s.droppedRelicId = nil
 	s.droppedRelicOfferPending = false
@@ -420,6 +597,21 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 		end
 
 		upgrades[choiceId] = (upgrades[choiceId] or 0) + 1
+		if choiceId == XP_UPGRADE_ID then
+			syncXpUpgradeStackAttribute(player, state)
+		elseif choiceId == HEALTH_UPGRADE_ID then
+			syncHealthUpgradeStackAttribute(player, state)
+			applyHealthUpgradeToCurrentCharacter(player, state)
+		elseif choiceId == SPEED_UPGRADE_ID then
+			syncSpeedUpgradeStackAttribute(player, state)
+			applySpeedUpgradeToCurrentCharacter(player, state)
+		elseif choiceId == MAGNET_RANGE_UPGRADE_ID then
+			syncMagnetRangeUpgradeStackAttribute(player, state)
+		elseif choiceId == HEALTH_ORB_AMOUNT_UPGRADE_ID then
+			syncHealthOrbAmountUpgradeStackAttribute(player, state)
+		elseif choiceId == HEALTH_ORB_CHANCE_UPGRADE_ID then
+			syncHealthOrbChanceUpgradeStackAttribute(player, state)
+		end
 		pendingLevelUpOfferByPlayer[player] = nil
 		print("[Progression][SUBMIT_UPGRADE_CLEAR_PENDING]", player.Name)
 		print( "[Progression][SUBMIT_UPGRADE_APPLIED]",
@@ -492,10 +684,8 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 				droppedRelicId = nil,
 				droppedRelicOfferPending = false,
 				droppedRelicOfferConsumed = false,
-				--- 로비 무기 선택/TeleportData 연동 시 이 필드는 런 진입 페이로드로 시드할 수 있음.
 				weaponId = eff,
 				weaponGrade = "Normal",
-				-- 신규: multi-weapon 기반
 				activeWeapons = {},
 				upgradeOfferQueue = {},
 			}
@@ -526,8 +716,13 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 		end
 		local finalState = progressByPlayer[player]
 
-		-- 보수적 초기화: activeWeapons는 생성만 하고, 기본 effective weapon 1개만 누락 시 보충
 		WeaponProgression.ensureWeaponFields(finalState, eff, hasOverride)
+		syncXpUpgradeStackAttribute(player, finalState)
+		syncHealthUpgradeStackAttribute(player, finalState)
+		syncSpeedUpgradeStackAttribute(player, finalState)
+		syncMagnetRangeUpgradeStackAttribute(player, finalState)
+		syncHealthOrbAmountUpgradeStackAttribute(player, finalState)
+		syncHealthOrbChanceUpgradeStackAttribute(player, finalState)
 
 		sanitizeBasicMagicRelicState(player, finalState)
 		return finalState
@@ -560,7 +755,18 @@ function ProgressionService.addExperience(player, amount)
 		return
 	end
 
-	state.xp += amount
+	local stackRaw = player:GetAttribute("ab_xp_increase_stack")
+	local stack = 0
+	if type(stackRaw) == "number" and stackRaw > 0 then
+		stack = math.max(0, math.floor(stackRaw + 0.5))
+	end
+	local effectiveAmount = amount * (1 + XP_UPGRADE_MUL_PER_STACK * stack)
+	effectiveAmount = math.floor(effectiveAmount + 0.5)
+	if effectiveAmount <= 0 then
+		return
+	end
+
+	state.xp += effectiveAmount
 
 	while true do
 		local need = xpRequiredForLevel(state.level)

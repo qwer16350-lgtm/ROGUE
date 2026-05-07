@@ -1,14 +1,4 @@
---- HealthPickupService — 적 사망 시 일정 확률로 떨어지는 빨간 회복 오브.
---- 시각·물리(직경, idle bob, 자석 반경/속도, 픽업 반경) 는 XpPickupService 와 동일한
---- GameConfig 키(XpOrbPartDiameter, XpOrbBob*, Xp*RadiusStuds, XpMagnetSpeedStudsPerSecond)
---- 를 그대로 공유한다. 차등 튜닝이 필요해지면 GameConfig 에 Health 전용 키를 분기.
 ---
---- 픽업 정책:
----   - hum.Health <= 0 (사망)         → 무시 (오브 유지)
----   - hum.Health >= hum.MaxHealth     → 무시 (오브 유지) — 만체 시 소비 안 함
----   - 그 외                            → 회복 + 오브 소비
---- 만체 / 사망 플레이어는 자석 흡수 대상에서도 제외하여, 가까이 있어도 오브가
---- 들러붙지 않고 idle bob 상태로 남는다.
 
 local Workspace = game:GetService("Workspace")
 
@@ -17,6 +7,10 @@ local HealthPickupService = {}
 local orbs = {}
 local folder = nil
 local orbDiameter = 1.2
+local MAGNET_RANGE_STACK_ATTR = "mg_Range_increase_stack"
+local MAGNET_RANGE_MUL_PER_STACK = 0.20
+local HEALTH_ORB_AMOUNT_STACK_ATTR = "ho_Amount_increase_stack"
+local HEALTH_ORB_AMOUNT_MUL_PER_STACK = 0.20
 
 local function ensureFolder()
 	if folder and folder.Parent then
@@ -116,6 +110,30 @@ function HealthPickupService.init(players, runService, gameConfig)
 		return bestPlayer, bestRoot, bestDist
 	end
 
+	local function getEffectiveMagnetRadiusForPlayer(player)
+		if not player then
+			return magnetRadius
+		end
+		local raw = player:GetAttribute(MAGNET_RANGE_STACK_ATTR)
+		local stack = 0
+		if type(raw) == "number" and raw > 0 then
+			stack = math.max(0, math.floor(raw + 0.5))
+		end
+		return magnetRadius * (1 + MAGNET_RANGE_MUL_PER_STACK * stack)
+	end
+
+	local function getHealthOrbAmountMultiplierForPlayer(player)
+		if not player then
+			return 1
+		end
+		local raw = player:GetAttribute(HEALTH_ORB_AMOUNT_STACK_ATTR)
+		local stack = 0
+		if type(raw) == "number" and raw > 0 then
+			stack = math.max(0, math.floor(raw + 0.5))
+		end
+		return 1 + HEALTH_ORB_AMOUNT_MUL_PER_STACK * stack
+	end
+
 	local function applyIdleBob(orb, part)
 		local anchor = orb.idleAnchorPosition
 		if not anchor then
@@ -129,7 +147,6 @@ function HealthPickupService.init(players, runService, gameConfig)
 		end
 	end
 
-	--- 회복·자석 흡수 자격 판정. 사망/만체 플레이어는 false.
 	local function isEligible(humanoid)
 		if not humanoid then
 			return false
@@ -156,7 +173,7 @@ function HealthPickupService.init(players, runService, gameConfig)
 			end
 
 			local pos = part.Position
-			local _nearestPlayer, nearestRoot, dist = getNearestPlayerRoot(pos)
+			local nearestPlayer, nearestRoot, dist = getNearestPlayerRoot(pos)
 			if not nearestRoot then
 				applyIdleBob(orb, part)
 				continue
@@ -171,8 +188,9 @@ function HealthPickupService.init(players, runService, gameConfig)
 					if type(healPct) ~= "number" or healPct < 0 then
 						healPct = 0
 					end
-					local healAmt = hum.MaxHealth * healPct
-					hum.Health = math.min(hum.MaxHealth, hum.Health + healAmt)
+					local baseHeal = hum.MaxHealth * healPct
+					local effectiveHeal = baseHeal * getHealthOrbAmountMultiplierForPlayer(nearestPlayer)
+					hum.Health = math.min(hum.MaxHealth, hum.Health + effectiveHeal)
 					part:Destroy()
 					table.remove(orbs, i)
 				else
@@ -181,7 +199,8 @@ function HealthPickupService.init(players, runService, gameConfig)
 				continue
 			end
 
-			if dist <= magnetRadius and eligible then
+			local effectiveMagnetRadius = getEffectiveMagnetRadiusForPlayer(nearestPlayer)
+			if dist <= effectiveMagnetRadius and eligible then
 				local targetPos = nearestRoot.Position
 				local offset = targetPos - pos
 				local len = offset.Magnitude

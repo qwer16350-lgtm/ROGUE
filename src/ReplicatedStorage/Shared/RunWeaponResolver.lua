@@ -1,4 +1,3 @@
---- GameConfig 기반 런 기본 무기 ID 결정 (서버/공유 순수 유틸, 다른 모듈 require 없음)
 
 local RunWeaponResolver = {}
 

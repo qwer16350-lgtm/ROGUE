@@ -26,14 +26,12 @@ function ResultClient.init()
 			old:Destroy()
 		end
 
-		--- 페이로드 해석 — 신규 키 우선, 누락 시 BossKilled 기준 폴백 (서버 신/구 양쪽 호환).
 		local floor       = data.Floor or 0
 		local maxFloor    = data.MaxFloor or RunConstants.MaxFloor
 		local isLastFloor = data.IsLastFloor == true
 		local outcome     = data.Outcome
 			or ((data.BossKilled == true) and RunConstants.Outcome.Clear or RunConstants.Outcome.Fail)
 		local cleared     = (outcome == RunConstants.Outcome.Clear)
-		--- 버튼 노출 조건: 단순하게 canAdvance 만으로. 서버가 cleared and not isLastFloor 로 보장.
 		local canAdvance  = data.CanAdvance == true
 
 		local screenGui = Instance.new("ScreenGui")
@@ -101,8 +99,6 @@ function ResultClient.init()
 
 		line(string.format("현재 층: %d / %d", floor, maxFloor), 7)
 
-		--- 자동 귀환 안내 — 케이스별 문구 분리.
-		--- StageFlow.onSessionFinished 가 자동 lobby 귀환을 트리거하는 두 케이스에 한해 노출.
 		if not cleared then
 			line("잠시 후 로비로 이동합니다", 8)
 		elseif cleared and isLastFloor then
@@ -141,9 +137,6 @@ function ResultClient.init()
 			return b
 		end
 
-		--- 단일 panel 공유 잠금 플래그 — 어떤 버튼을 클릭하든 즉시 잠겨 다른 버튼 클릭과
-		--- 동일 버튼 더블 클릭을 모두 차단. closeGui 의 Destroy 만으로도 후속 click event
-		--- 가 도달하지 못하지만, Roblox 의 input queue race 를 이중 차단하기 위해 명시.
 		local fired = false
 		local function closeGui()
 			if screenGui.Parent then

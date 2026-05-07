@@ -1,4 +1,3 @@
---- SwordShield 무기 드롭: 월드 스폰·다중 활성 드롭·거리 기반 획득. 승급은 ProgressionService.
 
 local WeaponDropService = {}
 
@@ -6,7 +5,6 @@ local DROP_KIND = "Weapon"
 local DROP_WEAPON_ID = "SwordShield"
 local PICKUP_RADIUS_STUDS = 4
 local DROP_PART_SIZE = Vector3.new(2.75, 2.75, 2.75)
--- 테스트 편의용 후보 가중치(초기값). 밸런스 단계에서 조정 예정.
 local WEAPON_DROP_CANDIDATES = {
 	{ weaponId = "SwordShield", weight = 40 },
 	{ weaponId = "Spear", weight = 30 },
@@ -136,7 +134,6 @@ function WeaponDropService.pickDropWeaponId(): string
 	return pickDropWeaponId()
 end
 
---- 적 사망 위치 등 월드 좌표에 드롭 1개 생성. 킬을 낸 플레이어만 획득 가능.
 function WeaponDropService.spawnWeaponDropAt(worldPosition: Vector3, boundPlayer: Player, weaponId: string)
 	if typeof(boundPlayer) ~= "Instance" or not boundPlayer:IsA("Player") then
 		return

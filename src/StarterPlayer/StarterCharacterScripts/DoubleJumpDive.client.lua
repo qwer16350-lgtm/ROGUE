@@ -223,8 +223,6 @@ local function onInput(input, gameProcessed)
 	local isGrounded = state == Enum.HumanoidStateType.Running
 		or state == Enum.HumanoidStateType.RunningNoPhysics
 		or state == Enum.HumanoidStateType.Landed
-	-- Allow dash from ground, or from air after exactly one jump used (1단 점프 후).
-	-- Block dash after reaching MAX_JUMPS (2단 점프) and during non-jump freefall (jumpCount == 0).
 	local dashAllowed = isGrounded or jumpCount == 1
 
 	if input.KeyCode == Enum.KeyCode.LeftShift and canDash and dashAllowed then

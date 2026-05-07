@@ -1,4 +1,3 @@
--- 개발용 공격 판정 범위 시각화. VFXClient 와 분리. GameConfig.Debug.ShowAttackRanges 가 true 일 때만 서버가 이벤트를 보냄.
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -58,7 +57,6 @@ local function displayOrigin(origin: Vector3): Vector3
 	return Vector3.new(origin.X, origin.Y + FLOOR_Y_OFFSET, origin.Z)
 end
 
---- Cylinder 축을 세워 원판을 XZ 평면에 가깝게 둠 (엔진: 실린더 길이 축은 파트 로컬 X).
 local function renderCircle(origin: Vector3, rangeStuds: number, duration: number)
 	if type(rangeStuds) ~= "number" or rangeStuds <= 0 then
 		return
@@ -131,7 +129,6 @@ local function renderCone(origin: Vector3, forward: Vector3, rangeStuds: number,
 	end)
 end
 
---- Thrust 스트립: 너비 × 길이 박스, forward 가 LookAt 과 일치 (서버 스트립 판정과 동일 축).
 local function renderLineBox(origin: Vector3, forward: Vector3, lengthStuds: number, widthStuds: number, duration: number)
 	if type(lengthStuds) ~= "number" or lengthStuds <= 0 then
 		return

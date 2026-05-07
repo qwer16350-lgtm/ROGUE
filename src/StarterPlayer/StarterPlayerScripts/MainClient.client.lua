@@ -12,7 +12,6 @@ local function matchesPlace(actual, configured)
 	return type(configured) == "number" and configured > 0 and actual == configured
 end
 
---- MainClient — 클라 단일 진입점. Place 분기 후 Lobby / Stage 초기화만 위임한다.
 if matchesPlace(placeId, RunConstants.LobbyPlaceId) then
 	LobbyClient.init()
 	print("[MainClient] branch=LobbyPlace placeId=", placeId)

@@ -12,8 +12,6 @@ return {
 			"Tile_Grassland_Bottleneck_A",
 			"Tile_Grassland_Bottleneck_B",
 		},
-		-- Grassland 동작 보존: ServerStorage 에 A/B/C 3종이 실존하지만 기존과
-		-- 동일하게 A 단일 소스만 사용한다. 변주 확장은 별도 플랜에서 결정.
 		BoundarySegmentTemplates = {
 			"Boundary_Grassland_WallSegment_A",
 		},

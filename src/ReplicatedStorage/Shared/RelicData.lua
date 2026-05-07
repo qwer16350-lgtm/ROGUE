@@ -1,6 +1,5 @@
 local RelicData = {}
 
---- 정적 정의: 수치는 이 모듈에만 둔다.
 local DEFINITIONS = {
 	old_shield_emblem = {
 		Id = "old_shield_emblem",
@@ -27,7 +26,6 @@ local DEFINITIONS = {
 
 local OFFER_IDS = { "old_shield_emblem", "cracked_sword_tip", "knights_belt" }
 
---- Step 4-1: 월드 드롭 없이 Lv6 1회 3택. 수치는 이 테이블에만 둔다.
 local DROPPED_DEFINITIONS = {
 	reinforced_shield_rim = {
 		Id = "reinforced_shield_rim",
@@ -59,15 +57,13 @@ local DROPPED_DEFINITIONS = {
 		Effect = {
 			sweepKnockback = true,
 			knockbackDistance = 10,
-			knockbackForce = 60,
+			knockbackForce = 30,
 		},
 	},
 }
 
 local DROPPED_OFFER_IDS = { "reinforced_shield_rim", "needle_edge", "rhythm_strap", "shield_spike" }
 
--- Dropped Relic offer weight: 슬롯별 "샘플링 가중치" (최종 등장 확률이 아님).
--- 예) 4종 모두 weight=25이고, 중복 없이 3개를 뽑으면 각 relic이 3택에 포함될 확률은 대략 75%.
 local DROPPED_OFFER_WEIGHTS = {
 	reinforced_shield_rim = 25,
 	needle_edge = 25,
@@ -142,7 +138,6 @@ local function mulFromStartingDef(def): { SweepDamageMul: number, ThrustDamageMu
 	}
 end
 
---- SwordShield 레벨업 3택 가중치(Step 3-2). 명시 없는 Id는 Progression 에서 1 취급.
 local SWORD_SHIELD_PICK_WEIGHTS_BY_RELIC: { [string]: { [string]: number } } = {
 	old_shield_emblem = {
 		ss_sweep_angle = 2,
@@ -210,7 +205,6 @@ function RelicData.getDroppedRelicEffect(droppedRelicId: string?): any
 	return eff
 end
 
---- Starting + Dropped 유물 배율을 곱해 반환. nil/알 수 없는 id 는 1.0.
 function RelicData.getCombatMultipliers(
 	startingRelicId: string?,
 	droppedRelicId: string?

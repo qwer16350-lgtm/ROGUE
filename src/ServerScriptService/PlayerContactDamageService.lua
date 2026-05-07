@@ -5,13 +5,48 @@ local EnemyTier = require(Shared:WaitForChild("Config"):WaitForChild("EnemyTier"
 
 local PlayerContactDamageService = {}
 
-local function applyCharacterHealth(humanoid, gameConfig)
-	humanoid.MaxHealth = gameConfig.PlayerBaseHealth
-	humanoid.Health = gameConfig.PlayerBaseHealth
+local HEALTH_UPGRADE_STACK_ATTR = "ab_Health_increase_stack"
+local HEALTH_UPGRADE_BONUS_PER_STACK = 20
+local SPEED_UPGRADE_STACK_ATTR = "ab_Speed_increase_stack"
+local SPEED_UPGRADE_MUL_PER_STACK = 0.03
+
+local function resolveEffectiveMaxHealth(player: Player, gameConfig): number
+	local base = gameConfig.PlayerBaseHealth
+	if type(base) ~= "number" or base <= 0 then
+		base = 100
+	end
+	local raw = player:GetAttribute(HEALTH_UPGRADE_STACK_ATTR)
+	local stack = 0
+	if type(raw) == "number" and raw > 0 then
+		stack = math.max(0, math.floor(raw + 0.5))
+	end
+	return math.max(1, base + HEALTH_UPGRADE_BONUS_PER_STACK * stack)
 end
 
--- Lazy 캐시: Remotes/VFXEvent 가 다른 서비스 부팅보다 늦게 만들어질 수 있으므로
--- 첫 데미지 틱에서 1회 조회 후 보관한다. 없으면 점멸만 생략하고 데미지 자체에는 영향 없음.
+local function applyCharacterHealth(player: Player, humanoid, gameConfig)
+	local effectiveMaxHealth = resolveEffectiveMaxHealth(player, gameConfig)
+	humanoid.MaxHealth = effectiveMaxHealth
+	humanoid.Health = effectiveMaxHealth
+end
+
+local function resolveEffectiveWalkSpeed(player: Player, gameConfig): number
+	local base = gameConfig.PlayerBaseWalkSpeed
+	if type(base) ~= "number" or base <= 0 then
+		base = 16
+	end
+	local raw = player:GetAttribute(SPEED_UPGRADE_STACK_ATTR)
+	local stack = 0
+	if type(raw) == "number" and raw > 0 then
+		stack = math.max(0, math.floor(raw + 0.5))
+	end
+	return math.max(0, base * (1 + SPEED_UPGRADE_MUL_PER_STACK * stack))
+end
+
+local function applyCharacterWalkSpeed(player: Player, humanoid, gameConfig)
+	local effectiveWalkSpeed = resolveEffectiveWalkSpeed(player, gameConfig)
+	humanoid.WalkSpeed = effectiveWalkSpeed
+end
+
 local vfxEventCache = nil
 local function getVfxEvent()
 	if vfxEventCache then
@@ -27,33 +62,37 @@ end
 function PlayerContactDamageService.init(players, runService, gameConfig, enemyService)
 	local lastDamageAt = {}
 
-	local function onCharacterAdded(character)
+	local function onCharacterAdded(player: Player, character)
 		local humanoid = character:WaitForChild("Humanoid", 10)
 		if not humanoid then
 			return
 		end
-		applyCharacterHealth(humanoid, gameConfig)
+		applyCharacterHealth(player, humanoid, gameConfig)
+		applyCharacterWalkSpeed(player, humanoid, gameConfig)
 	end
 
 	for _, player in ipairs(players:GetPlayers()) do
 		if player.Character then
-			task.spawn(onCharacterAdded, player.Character)
+			task.spawn(onCharacterAdded, player, player.Character)
 		end
-		player.CharacterAdded:Connect(onCharacterAdded)
+		player.CharacterAdded:Connect(function(character)
+			onCharacterAdded(player, character)
+		end)
 	end
 
 	players.PlayerAdded:Connect(function(player)
 		if player.Character then
-			task.spawn(onCharacterAdded, player.Character)
+			task.spawn(onCharacterAdded, player, player.Character)
 		end
-		player.CharacterAdded:Connect(onCharacterAdded)
+		player.CharacterAdded:Connect(function(character)
+			onCharacterAdded(player, character)
+		end)
 	end)
 
 	players.PlayerRemoving:Connect(function(player)
 		lastDamageAt[player] = nil
 	end)
 
-	-- Per-tier sphere 반지름 배수 lookup. 누락 / 비정상 값은 1 폴백.
 	local function getRadiusMulFor(tier)
 		local tbl = gameConfig.EnemyContactRadiusMultiplierByTier
 		if type(tbl) ~= "table" then
@@ -103,7 +142,6 @@ function PlayerContactDamageService.init(players, runService, gameConfig, enemyS
 					local threshold = base * getRadiusMulFor(tier)
 					if (part.Position - hrp.Position).Magnitude <= threshold then
 						touchingAny = true
-						-- 신규 tier 우선, 호환성을 위해 레거시 isBoss 플래그도 OR 처리.
 						if EnemyTier.isBossFamily(tier) or (entry.state and entry.state.isBoss) then
 							touchingBoss = true
 						end

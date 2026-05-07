@@ -9,7 +9,6 @@ local LEGACY_PLACEHOLDER = "LobbyPlaceholderGui"
 local LOBBY_STATION_TAG = "LobbyStation"
 local ENTRY_PAD_TAG = "LobbyEntryPad"
 
---- 단일 오픈 대상 패널 이름 (Explorer 이름과 동일)
 local PANEL_NAMES = {
 	"SkillTreePanel",
 	"ShopPanel",
