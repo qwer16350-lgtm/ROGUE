@@ -19,6 +19,7 @@ local state = {
 	maxFloor = nil,
 	lobbyPlaceId = nil,
 	stagePlaceId = nil,
+	startingRelicId = nil,
 	members = {},
 }
 
@@ -42,6 +43,10 @@ local function applyFromTd(td)
 	state.maxFloor = td[k.MaxFloor] or RunConstants.MaxFloor
 	state.lobbyPlaceId = td[k.LobbyPlaceId] or RunConstants.LobbyPlaceId
 	state.stagePlaceId = td[k.StagePlaceId] or RunConstants.StagePlaceId
+	local startingRelicId = td[k.StartingRelicId]
+	if type(startingRelicId) == "string" and startingRelicId ~= "" then
+		state.startingRelicId = startingRelicId
+	end
 end
 
 local function applyDefaults()
@@ -53,6 +58,7 @@ local function applyDefaults()
 	state.maxFloor = RunConstants.MaxFloor
 	state.lobbyPlaceId = RunConstants.LobbyPlaceId
 	state.stagePlaceId = RunConstants.StagePlaceId
+	state.startingRelicId = nil
 end
 
 ---
@@ -117,6 +123,10 @@ end
 
 function RunContext.getMembers()
 	return state.members
+end
+
+function RunContext.getStartingRelicId()
+	return state.startingRelicId
 end
 
 return RunContext

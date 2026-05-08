@@ -926,7 +926,11 @@ local function playWorldVfx(
 	attackFollowUserId,
 	currentAttackCooldown,
 	attackSubtype: string?,
-	attackForward: Vector3?
+	attackForward: Vector3?,
+	attackCenter: Vector3?,
+	attackLengthStuds: number?,
+	attackWidthStuds: number?,
+	attackAngleDeg: number?
 )
 	local cfg = EFFECTS[effectType]
 	if not cfg then
@@ -943,13 +947,18 @@ local function playWorldVfx(
 		)
 		return
 	end
+	local centerVec = coerceVector3(attackCenter)
 	local fwdVec = coerceVector3(attackForward)
 	local subtypeStr = effectType == "attack" and type(attackSubtype) == "string" and attackSubtype or nil
 
 	local displayPos = posVec
+	if effectType == "attack" and subtypeStr == "SpearThrust" and typeof(centerVec) == "Vector3" then
+		displayPos = centerVec
+	end
 	local displayFwdForVfx = fwdVec
-	if effectType == "attack" and (subtypeStr == "Sweep" or subtypeStr == "Thrust") then
-		local flatDir, adjPos = swordShieldFlatForwardAndDisplayPos(posVec, fwdVec, subtypeStr)
+	if effectType == "attack" and (subtypeStr == "Sweep" or subtypeStr == "Thrust" or subtypeStr == "SpearThrust" or subtypeStr == "TwoHandedSweep") then
+		local ssSubtype = (subtypeStr == "SpearThrust" and "Thrust") or (subtypeStr == "TwoHandedSweep" and "Sweep") or subtypeStr
+		local flatDir, adjPos = swordShieldFlatForwardAndDisplayPos(displayPos, fwdVec, ssSubtype)
 		displayFwdForVfx = flatDir
 		displayPos = adjPos
 	end
@@ -1003,6 +1012,9 @@ local function playWorldVfx(
 	end
 
 	local radiusForVisual = attackRadiusStuds
+	if effectType == "attack" and type(attackLengthStuds) == "number" and attackLengthStuds > 0 then
+		radiusForVisual = attackLengthStuds
+	end
 	if effectType == "attack" then
 		local st = type(attackSubtype) == "string" and attackSubtype or nil
 		if st == "Sweep" and type(radiusForVisual) == "number" then
@@ -1020,8 +1032,9 @@ local function playWorldVfx(
 	if effectType == "attack" then
 		applyAttackVfxDynamicTiming(clone, currentAttackCooldown)
 	end
-	if effectType == "attack" and (subtypeStr == "Sweep" or subtypeStr == "Thrust") then
-		applySwordShieldAttackRangeVisualScale(clone, radiusForVisual, subtypeStr)
+	if effectType == "attack" and (subtypeStr == "Sweep" or subtypeStr == "Thrust" or subtypeStr == "SpearThrust" or subtypeStr == "TwoHandedSweep") then
+		local ssSubtype = (subtypeStr == "SpearThrust" and "Thrust") or (subtypeStr == "TwoHandedSweep" and "Sweep") or subtypeStr
+		applySwordShieldAttackRangeVisualScale(clone, radiusForVisual, ssSubtype)
 	else
 		applyScaleByAttackRangeIfNeeded(cfg, clone, radiusForVisual)
 	end
@@ -1312,6 +1325,10 @@ function VFXClient.init()
 		local atkSubtype =
 			(t == "attack" and type(payload.Subtype) == "string") and payload.Subtype or nil
 		local atkForward = t == "attack" and coerceVector3(payload.AttackForward) or nil
+		local atkCenter = t == "attack" and coerceVector3(payload.AttackCenter) or nil
+		local atkLength = (t == "attack" and type(payload.AttackLength) == "number") and payload.AttackLength or nil
+		local atkWidth = (t == "attack" and type(payload.AttackWidth) == "number") and payload.AttackWidth or nil
+		local atkAngle = (t == "attack" and type(payload.AttackAngle) == "number") and payload.AttackAngle or nil
 
 		local skipBasicMagicAttackVfx =
 			t == "attack" and type(atkSubtype) == "string" and atkSubtype == "BasicMagic"
@@ -1331,7 +1348,7 @@ function VFXClient.init()
 					end
 				end
 			end
-			playWorldVfx(vfxRoot, t, worldPos, attackR, attackFollowUid, attackCooldown, atkSubtype, atkForward)
+			playWorldVfx(vfxRoot, t, worldPos, attackR, attackFollowUid, attackCooldown, atkSubtype, atkForward, atkCenter, atkLength, atkWidth, atkAngle)
 		end
 		if t == "hit" then
 			local hp = payload.HitPart

@@ -3,6 +3,7 @@ local ProgressionService = {}
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local RunWeaponResolver = require(Shared:WaitForChild("RunWeaponResolver"))
+local RunContext = require(script.Parent:WaitForChild("Run"):WaitForChild("RunContext"))
 local UpgradeOfferBuilder = require(script.Parent:WaitForChild("Progression"):WaitForChild("UpgradeOfferBuilder"))
 local WeaponProgression = require(script.Parent:WaitForChild("Progression"):WaitForChild("WeaponProgression"))
 
@@ -15,6 +16,7 @@ local immediateHudPush = nil
 local pendingLevelUpOfferByPlayer: { [Player]: { [string]: boolean } } = {}
 local pendingStartingRelicByPlayer: { [Player]: { [string]: boolean } } = {}
 local pendingDroppedRelicByPlayer: { [Player]: { [string]: boolean } } = {}
+local pendingStartingWeaponByPlayer: { [Player]: { [string]: boolean } } = {}
 
 local function progressionVerbose(): boolean
 	local d = gameConfigRef and gameConfigRef.Debug
@@ -32,6 +34,30 @@ local SPEED_UPGRADE_MUL_PER_STACK = 0.03
 local MAGNET_RANGE_UPGRADE_ID = "mg_Range_increase"
 local HEALTH_ORB_AMOUNT_UPGRADE_ID = "ho_Amount_increase"
 local HEALTH_ORB_CHANCE_UPGRADE_ID = "ho_Chance_increase"
+
+local function resolveStartingRelicIdFromRunContext(): string?
+	if not relicDataModule then
+		return nil
+	end
+	if type(RunContext) ~= "table" or type(RunContext.getStartingRelicId) ~= "function" then
+		return nil
+	end
+	local relicId = RunContext.getStartingRelicId()
+	if type(relicId) ~= "string" or relicId == "" then
+		return nil
+	end
+	local choices = relicDataModule.getStartingRelicChoices and relicDataModule.getStartingRelicChoices() or nil
+	if type(choices) ~= "table" then
+		return nil
+	end
+	for _, row in ipairs(choices) do
+		if type(row) == "table" and row.Id == relicId then
+			return relicId
+		end
+	end
+	warn(string.format("[Progression] invalid startingRelicId from RunContext ignored: %s", tostring(relicId)))
+	return nil
+end
 
 local function fireWeaponPickupNotify(player: Player, kind: string)
 	if weaponPickupNotifyEvent then
@@ -96,7 +122,6 @@ end
 local upgradeDataModule = nil
 
 local function defaultUpgradeZeros()
-	local t = {}
 	if not upgradeDataModule then
 		return {
 			damage_up = 0,
@@ -104,6 +129,10 @@ local function defaultUpgradeZeros()
 			attack_size_up = 0,
 		}
 	end
+	if type(upgradeDataModule.createZeroUpgradeTable) == "function" then
+		return upgradeDataModule.createZeroUpgradeTable()
+	end
+	local t = {}
 	for _, choice in ipairs(upgradeDataModule.Choices) do
 		t[choice.Id] = 0
 	end
@@ -115,6 +144,10 @@ end
 
 local function fillMissingUpgradeKeys(upgrades)
 	if not upgradeDataModule then
+		return
+	end
+	if type(upgradeDataModule.fillMissingUpgradeKeys) == "function" then
+		upgradeDataModule.fillMissingUpgradeKeys(upgrades)
 		return
 	end
 	for _, choice in ipairs(upgradeDataModule.Choices) do
@@ -363,6 +396,10 @@ local function flushUpgradeOfferQueue(player: Player)
 		print("[Progression][FLUSH_BLOCKED_PENDING_DROP]", player.Name)
 		return
 	end
+	if pendingStartingWeaponByPlayer[player] then
+		print("[Progression][FLUSH_BLOCKED_PENDING_START_WEAPON]", player.Name)
+		return
+	end
 	local state = progressByPlayer[player]
 	if not state or not state.upgradeOfferQueue or #state.upgradeOfferQueue == 0 then
 		print("[Progression][FLUSH_EMPTY_QUEUE]", player.Name)
@@ -415,6 +452,9 @@ local function tryFlushDroppedRelicOffer(player: Player)
 	if pendingDroppedRelicByPlayer[player] then
 		return
 	end
+	if pendingStartingWeaponByPlayer[player] then
+		return
+	end
 	local choices = relicDataModule.getDroppedRelicChoices()
 	local allowed = {}
 	for _, c in ipairs(choices) do
@@ -439,6 +479,7 @@ local function sanitizeBasicMagicRelicState(player: Player, s)
 	s.droppedRelicOfferConsumed = true
 	pendingStartingRelicByPlayer[player] = nil
 	pendingDroppedRelicByPlayer[player] = nil
+	pendingStartingWeaponByPlayer[player] = nil
 end
 
 function ProgressionService.init(players, replicatedStorage, gameConfig)
@@ -469,6 +510,9 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 	end
 
 	local function newUpgradeTable()
+		if type(upgradeData.createZeroUpgradeTable) == "function" then
+			return upgradeData.createZeroUpgradeTable()
+		end
 		local t = {}
 		for _, choice in ipairs(upgradeData.Choices) do
 			t[choice.Id] = 0
@@ -547,6 +591,35 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 			pendingDroppedRelicByPlayer[player] = nil
 			flushUpgradeOfferQueue(player)
 			tryFlushDroppedRelicOffer(player)
+			return
+		end
+
+		local weaponPending = pendingStartingWeaponByPlayer[player]
+		if weaponPending then
+			if not weaponPending[choiceId] then
+				warn(string.format("[Progression] StartingWeapon submit: choiceId not in pending offer (%s / %s)", choiceId, player.Name))
+				return
+			end
+			local st = progressByPlayer[player]
+			if not st then
+				pendingStartingWeaponByPlayer[player] = nil
+				warn(string.format("[Progression] StartingWeapon submit: rejected — no state (%s)", player.Name))
+				return
+			end
+			st.weaponId = choiceId
+			st.weaponGrade = "Normal"
+			st.activeWeapons = {
+				[choiceId] = {
+					weaponId = choiceId,
+					grade = "Normal",
+				},
+			}
+			pendingStartingWeaponByPlayer[player] = nil
+			flushUpgradeOfferQueue(player)
+			tryFlushDroppedRelicOffer(player)
+			if immediateHudPush then
+				immediateHudPush(player)
+			end
 			return
 		end
 
@@ -717,6 +790,12 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 		local finalState = progressByPlayer[player]
 
 		WeaponProgression.ensureWeaponFields(finalState, eff, hasOverride)
+		if finalState.startingRelicId == nil then
+			local runCtxRelicId = resolveStartingRelicIdFromRunContext()
+			if type(runCtxRelicId) == "string" and runCtxRelicId ~= "" then
+				finalState.startingRelicId = runCtxRelicId
+			end
+		end
 		syncXpUpgradeStackAttribute(player, finalState)
 		syncHealthUpgradeStackAttribute(player, finalState)
 		syncSpeedUpgradeStackAttribute(player, finalState)
@@ -735,6 +814,9 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 	players.PlayerRemoving:Connect(function(player)
 		progressByPlayer[player] = nil
 		pendingLevelUpOfferByPlayer[player] = nil
+		pendingStartingRelicByPlayer[player] = nil
+		pendingDroppedRelicByPlayer[player] = nil
+	pendingStartingWeaponByPlayer[player] = nil
 	end)
 
 	for _, player in players:GetPlayers() do
@@ -877,6 +959,41 @@ function ProgressionService.tryGrantDroppedRelicOfferFromChest(player): boolean
 	return true
 end
 
+function ProgressionService.tryOfferStartingWeapon(player)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	if not levelUpChoiceEvent then
+		return
+	end
+	local state = progressByPlayer[player]
+	if not state then
+		return
+	end
+	if pendingStartingWeaponByPlayer[player] then
+		return
+	end
+	if pendingStartingRelicByPlayer[player] or pendingDroppedRelicByPlayer[player] or pendingLevelUpOfferByPlayer[player] then
+		return
+	end
+
+	local choices = {
+		{ Id = "SwordShield", Label = "Sword & Shield" },
+		{ Id = "Spear", Label = "Spear" },
+		{ Id = "TwoHandedSword", Label = "Two-Handed Sword" },
+	}
+	local allowed = {
+		SwordShield = true,
+		Spear = true,
+		TwoHandedSword = true,
+	}
+	pendingStartingWeaponByPlayer[player] = allowed
+	levelUpChoiceEvent:FireClient(player, {
+		ChoiceKind = "StartingWeapon",
+		Title = "Choose Test Weapon",
+		Choices = choices,
+	})
+end
 function ProgressionService.tryOfferStartingRelic(player)
 	if typeof(player) ~= "Instance" or not player:IsA("Player") then
 		return
@@ -903,6 +1020,9 @@ function ProgressionService.tryOfferStartingRelic(player)
 			return
 		end
 		if pendingDroppedRelicByPlayer[player] then
+			return
+		end
+		if pendingStartingWeaponByPlayer[player] then
 			return
 		end
 		if not relicDataModule or not levelUpChoiceEvent then

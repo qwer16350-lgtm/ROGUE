@@ -21,7 +21,7 @@ end
 
 local function buildTeleportData(args)
 	local k = RunConstants.TeleportKeys
-	return {
+	local payload = {
 		[k.RunId] = args.runId,
 		[k.PartyId] = args.partyId,
 		[k.Mode] = args.mode,
@@ -31,6 +31,11 @@ local function buildTeleportData(args)
 		[k.LobbyPlaceId] = args.lobbyPlaceId,
 		[k.StagePlaceId] = args.stagePlaceId,
 	}
+	local startingRelicId = args.startingRelicId
+	if type(startingRelicId) == "string" and startingRelicId ~= "" then
+		payload[k.StartingRelicId] = startingRelicId
+	end
+	return payload
 end
 
 local function reserveStageServer(stagePlaceId)
@@ -80,6 +85,7 @@ function Teleport.toFirstFloor(playerOrPlayers, opts)
 		maxFloor = RunConstants.MaxFloor,
 		lobbyPlaceId = RunConstants.LobbyPlaceId,
 		stagePlaceId = stagePlaceId,
+		startingRelicId = opts.startingRelicId,
 	})
 
 	local options = Instance.new("TeleportOptions")
@@ -116,6 +122,7 @@ function Teleport.toFloor(playerOrPlayers, runContext, floorIndex)
 		maxFloor = runContext.getMaxFloor(),
 		lobbyPlaceId = runContext.getLobbyPlaceId(),
 		stagePlaceId = stagePlaceId,
+		startingRelicId = runContext.getStartingRelicId and runContext.getStartingRelicId() or nil,
 	})
 
 	local options = Instance.new("TeleportOptions")

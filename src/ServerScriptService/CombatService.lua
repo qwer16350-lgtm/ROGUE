@@ -80,7 +80,11 @@ function CombatService.init(
 		attackerUserId,
 		attackCooldownSeconds,
 		subtype: string?,
-		attackForward: Vector3?
+		attackForward: Vector3?,
+		attackCenter: Vector3?,
+		attackLengthStuds: number?,
+		attackWidthStuds: number?,
+		attackAngleDeg: number?
 	)
 		local payload = {
 			EffectType = effectType,
@@ -103,6 +107,18 @@ function CombatService.init(
 		end
 		if effectType == "attack" and typeof(attackForward) == "Vector3" then
 			payload.AttackForward = attackForward
+		end
+		if effectType == "attack" and typeof(attackCenter) == "Vector3" then
+			payload.AttackCenter = attackCenter
+		end
+		if effectType == "attack" and type(attackLengthStuds) == "number" and attackLengthStuds > 0 then
+			payload.AttackLength = attackLengthStuds
+		end
+		if effectType == "attack" and type(attackWidthStuds) == "number" and attackWidthStuds > 0 then
+			payload.AttackWidth = attackWidthStuds
+		end
+		if effectType == "attack" and type(attackAngleDeg) == "number" and attackAngleDeg > 0 then
+			payload.AttackAngle = attackAngleDeg
 		end
 		vfxEvent:FireAllClients(payload)
 	end
@@ -315,7 +331,7 @@ function CombatService.init(
 			end
 		end
 
-		fireVfx("attack", center, nil, effectiveRange, player.UserId, effectiveInterval, "BasicMagic", nil)
+		fireVfx("attack", center, nil, effectiveRange, player.UserId, effectiveInterval, "BasicMagic", nil, nil, nil, nil, nil)
 		fireAttackRangeDebug({
 			Shape = "Circle",
 			Origin = center,
@@ -447,7 +463,7 @@ function CombatService.init(
 		end
 
 		local attackVfxOrigin = root.Position
-		fireVfx("attack", attackVfxOrigin, nil, range, player.UserId, interval, subtype, forward)
+		fireVfx("attack", attackVfxOrigin, nil, range, player.UserId, interval, subtype, forward, nil, useThrust and thrustEff.RangeStuds or range, useThrust and thrustW or nil, useThrust and nil or apex)
 		if useThrust then
 			fireAttackRangeDebug({
 				Shape = "LineBox",
@@ -527,14 +543,13 @@ function CombatService.init(
 		if type(thrustEff) ~= "table" then
 			return
 		end
-		local interval = type(eff.AttackIntervalSeconds) == "number" and eff.AttackIntervalSeconds or 1.1
+		local interval = type(eff.AttackIntervalSeconds) == "number" and eff.AttackIntervalSeconds or 0.7
 		if interval <= 0 then
-			interval = 1.1
+			interval = 0.7
 		end
-		local baseDamage = type(thrustEff.BaseDamage) == "number" and thrustEff.BaseDamage or 30
+		local baseDamage = type(thrustEff.BaseDamage) == "number" and thrustEff.BaseDamage or 40
 		local thrustLen = type(thrustEff.RangeStuds) == "number" and thrustEff.RangeStuds or 12
 		local thrustW = type(thrustEff.WidthStuds) == "number" and thrustEff.WidthStuds or 3
-		local targetLimit = type(thrustEff.TargetLimit) == "number" and math.max(1, math.floor(thrustEff.TargetLimit)) or 1
 
 		local last = getLastAttack(player, weaponId)
 		if now - last < interval then
@@ -586,7 +601,7 @@ function CombatService.init(
 			return pa.Magnitude < pb.Magnitude
 		end)
 
-		fireVfx("attack", origin, nil, thrustLen, player.UserId, interval, "SpearThrust", forward)
+		fireVfx("attack", origin + forwardThrustXZ * (thrustLen * 0.5), nil, thrustLen, player.UserId, interval, "SpearThrust", forward, origin + forwardThrustXZ * (thrustLen * 0.5), thrustLen, thrustW, nil)
 		fireAttackRangeDebug({
 			Shape = "LineBox",
 			Origin = origin,
@@ -597,15 +612,10 @@ function CombatService.init(
 			AttackKind = "Spear",
 		})
 
-		local hitCount = 0
 		for _, entry in ipairs(inStrip) do
 			local part = entry.part
 			if part and part.Parent then
 				applyDamageResolved(player, entry, baseDamage, "Spear")
-				hitCount += 1
-				if hitCount >= targetLimit then
-					break
-				end
 			end
 		end
 	end
@@ -685,7 +695,7 @@ function CombatService.init(
 			return (a.part.Position - origin).Magnitude < (b.part.Position - origin).Magnitude
 		end)
 
-		fireVfx("attack", origin, nil, range, player.UserId, interval, "TwoHandedSweep", forward)
+		fireVfx("attack", origin, nil, range, player.UserId, interval, "TwoHandedSweep", forward, nil, range, nil, angle)
 		fireAttackRangeDebug({
 			Shape = "Cone",
 			Origin = origin,

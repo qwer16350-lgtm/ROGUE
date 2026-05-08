@@ -51,6 +51,66 @@ local function stackCount(upgrades, key: string): number
 	return math.max(0, math.floor(v + 0.5))
 end
 
+function UpgradeData.getAllKnownUpgradeIds(): { string }
+	local out = {}
+	local seen = {}
+
+	local function pushId(id)
+		if type(id) ~= "string" or id == "" then
+			return
+		end
+		if seen[id] == true then
+			return
+		end
+		seen[id] = true
+		table.insert(out, id)
+	end
+
+	for _, choice in ipairs(UpgradeData.Choices or {}) do
+		if type(choice) == "table" then
+			pushId(choice.Id)
+		end
+	end
+	for _, choice in ipairs(UpgradeData.SwordShieldChoices or {}) do
+		if type(choice) == "table" then
+			pushId(choice.Id)
+		end
+	end
+
+	local defs = UpgradeData.UpgradeDefinitions
+	if type(defs) == "table" then
+		for id, row in pairs(defs) do
+			if type(row) == "table" and type(row.Id) == "string" and row.Id ~= "" then
+				pushId(row.Id)
+			else
+				pushId(id)
+			end
+		end
+	end
+
+	return out
+end
+
+function UpgradeData.createZeroUpgradeTable(): { [string]: number }
+	local t = {}
+	for _, id in ipairs(UpgradeData.getAllKnownUpgradeIds()) do
+		t[id] = 0
+	end
+	return t
+end
+
+function UpgradeData.fillMissingUpgradeKeys(upgrades)
+	if type(upgrades) ~= "table" then
+		return UpgradeData.createZeroUpgradeTable()
+	end
+	for _, id in ipairs(UpgradeData.getAllKnownUpgradeIds()) do
+		if upgrades[id] == nil then
+			upgrades[id] = 0
+		end
+	end
+	return upgrades
+end
+
 local MIN_ATTACK_INTERVAL_SECONDS = 0.25
 
 local function clampAttackIntervalSeconds(value)
@@ -291,8 +351,8 @@ function UpgradeData.getSpearEffectiveCombat(gameConfig, weaponProfile, upgrades
 	local profile = type(weaponProfile) == "table" and weaponProfile or {}
 	local thrustBase = type(profile.Thrust) == "table" and profile.Thrust or {}
 
-	local baseInterval = sanitizePositiveNumber(profile.AttackIntervalSeconds, 1.1)
-	local baseDamage = sanitizePositiveNumber(profile.BaseDamage, 30)
+	local baseInterval = sanitizePositiveNumber(profile.AttackIntervalSeconds, 0.7)
+	local baseDamage = sanitizePositiveNumber(profile.BaseDamage, 40)
 	local baseRange = sanitizePositiveNumber(thrustBase.RangeStuds, 12)
 	local baseWidth = sanitizePositiveNumber(thrustBase.WidthStuds, 3)
 	local baseTargetLimit = sanitizePositiveNumber(thrustBase.TargetLimit, 1)

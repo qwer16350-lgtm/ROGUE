@@ -20,6 +20,7 @@ local PANEL_NAMES = {
 	"InGameShopPanel",
 	"RelicShopPanel",
 	"RelicFusionPanel",
+	"StartingRelicPanel",
 }
 
 local ACTION_BUTTON_TO_PANEL: { [string]: string } = {
@@ -109,48 +110,134 @@ end
 
 local function wireLobbyStations(panelMap: { [string]: GuiObject })
 	local localPlayer = Players.LocalPlayer
-	local tagged = CollectionService:GetTagged(LOBBY_STATION_TAG)
+	local wiredStations = setmetatable({}, { __mode = "k" }) :: { [Instance]: boolean }
+	local pendingPromptWaitStations = setmetatable({}, { __mode = "k" }) :: { [Instance]: boolean }
+	local promptWatchConnections = setmetatable({}, { __mode = "k" }) :: { [Instance]: RBXScriptConnection }
 
-	for _, inst in ipairs(tagged) do
+	local function tryWireStation(inst: Instance)
+		if not inst or not inst.Parent then
+			return
+		end
+		if wiredStations[inst] then
+			return
+		end
 		if CollectionService:HasTag(inst, ENTRY_PAD_TAG) then
-			continue
+			return
 		end
 
 		local panelName = inst:GetAttribute("LobbyPanel")
 		if type(panelName) ~= "string" or panelName == "" then
 			warn("[LobbyClient] LobbyStation instance missing string attribute LobbyPanel: ", inst:GetFullName())
-			continue
+			return
 		end
 		if not panelMap[panelName] then
 			warn("[LobbyClient] LobbyStation LobbyPanel not in registry: ", panelName, " at ", inst:GetFullName())
-			continue
+			return
 		end
 
 		local prompt = inst:FindFirstChild("OpenPrompt", true)
 		if not prompt or not prompt:IsA("ProximityPrompt") then
-			local found: ProximityPrompt? = nil
-			for _, d in inst:GetDescendants() do
-				if d:IsA("ProximityPrompt") then
-					found = d
-					break
-				end
-			end
-			prompt = found
+			prompt = inst:FindFirstChildWhichIsA("ProximityPrompt", true)
 		end
 		if not prompt or not prompt:IsA("ProximityPrompt") then
-			warn("[LobbyClient] LobbyStation has no ProximityPrompt: ", inst:GetFullName())
-			continue
+			if pendingPromptWaitStations[inst] then
+				return
+			end
+			pendingPromptWaitStations[inst] = true
+			warn("[LobbyClient] LobbyStation has no ProximityPrompt (watching): ", inst:GetFullName())
+			promptWatchConnections[inst] = inst.DescendantAdded:Connect(function(desc: Instance)
+				if wiredStations[inst] then
+					local existingConn = promptWatchConnections[inst]
+					if existingConn then
+						existingConn:Disconnect()
+						promptWatchConnections[inst] = nil
+					end
+					pendingPromptWaitStations[inst] = nil
+					return
+				end
+				if desc:IsA("ProximityPrompt") then
+					local existingConn = promptWatchConnections[inst]
+					if existingConn then
+						existingConn:Disconnect()
+						promptWatchConnections[inst] = nil
+					end
+					pendingPromptWaitStations[inst] = nil
+					tryWireStation(inst)
+				end
+			end)
+			return
 		end
+
+		local pendingConn = promptWatchConnections[inst]
+		if pendingConn then
+			pendingConn:Disconnect()
+			promptWatchConnections[inst] = nil
+		end
+		pendingPromptWaitStations[inst] = nil
+
+		wiredStations[inst] = true
+		print(string.format("[LobbyClient] station wired: %s -> %s", inst.Name, panelName))
 
 		prompt.Triggered:Connect(function(player: Player?)
 			if player ~= localPlayer then
 				return
 			end
+			print(string.format("[LobbyClient] station prompt triggered -> %s", panelName))
 			showOnlyPanel(panelMap, panelName :: string)
 		end)
 	end
+
+	for _, inst in ipairs(CollectionService:GetTagged(LOBBY_STATION_TAG)) do
+		tryWireStation(inst)
+	end
+
+	CollectionService:GetInstanceAddedSignal(LOBBY_STATION_TAG):Connect(function(inst: Instance)
+		tryWireStation(inst)
+	end)
 end
 
+local function wireStartingRelicPanel(guiRoot: Instance)
+	local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+	local selectEvent = remotes and remotes:WaitForChild("StartingRelicSelectRequest", 10)
+	if not selectEvent or not selectEvent:IsA("RemoteEvent") then
+		warn("[LobbyClient] Remotes.StartingRelicSelectRequest missing")
+		return
+	end
+
+	local panel = deepFind(guiRoot, "StartingRelicPanel")
+	if not panel or not panel:IsA("GuiObject") then
+		return
+	end
+
+	local selectedLabel = deepFind(panel, "SelectedStartingRelicLabel")
+	local function updateLocalSelectedLabel(relicId: string, button: GuiButton)
+		if not selectedLabel or not selectedLabel:IsA("TextLabel") then
+			return
+		end
+		local displayText = button.Text
+		if type(displayText) ~= "string" or displayText == "" then
+			displayText = relicId
+		end
+		-- local-only optimistic display until a server-ack flow is introduced.
+		selectedLabel.Text = string.format("Selected: %s", displayText)
+	end
+	local bindCount = 0
+	for _, d in ipairs(panel:GetDescendants()) do
+		local isButton = d:IsA("TextButton") or d:IsA("ImageButton")
+		if isButton then
+			local relicId = d:GetAttribute("StartingRelicId")
+			if type(relicId) == "string" and relicId ~= "" then
+				local btn = d :: GuiButton
+				btn.MouseButton1Click:Connect(function()
+					selectEvent:FireServer(relicId)
+					updateLocalSelectedLabel(relicId, btn)
+				end)
+				bindCount += 1
+			end
+		end
+	end
+	print(string.format("[LobbyClient] StartingRelic button binds: %d", bindCount))
+end
 local function cloneFromUIAssets(playerGui: PlayerGui): ScreenGui?
 	local uiAssets = ReplicatedStorage:FindFirstChild("UIAssets")
 	local lobbyFolder = uiAssets and uiAssets:FindFirstChild("Lobby")
@@ -359,6 +446,7 @@ function LobbyClient.init()
 	wirePlayerActionButtons(gui, panelMap)
 	wirePanelCloseButtons(gui, panelMap)
 	wireLobbyStations(panelMap)
+	wireStartingRelicPanel(gui)
 
 	print("[LobbyClient] 패널/Station placeholder 연결 완료 (패널 1개만 표시, 서버 기능 없음)")
 end

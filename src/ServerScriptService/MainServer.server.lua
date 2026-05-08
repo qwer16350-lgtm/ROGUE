@@ -90,7 +90,7 @@ local function startStageBranch()
 	})
 
 	for _, pl in Players:GetPlayers() do
-		ProgressionService.tryOfferStartingRelic(pl)
+		ProgressionService.tryOfferStartingWeapon(pl)
 	end
 
 	print(string.format("[MainServer] StagePlace started (placeId=%d)", placeId))

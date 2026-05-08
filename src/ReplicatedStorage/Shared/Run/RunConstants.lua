@@ -38,6 +38,7 @@ RunConstants.TeleportKeys = {
 	MaxFloor     = "MaxFloor",
 	LobbyPlaceId = "LobbyPlaceId",
 	StagePlaceId = "StagePlaceId",
+	StartingRelicId = "startingRelicId",
 }
 
 ------------------------------------------------------------
