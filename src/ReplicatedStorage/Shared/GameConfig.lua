@@ -94,8 +94,8 @@ return {
 
 	------------------------------------------------------------
 	------------------------------------------------------------
-	SwordShieldWeaponDropChance = 0.01,
-	SwordShieldRelicChestDropChance = 0.01,
+	WeaponDropChance = 0.01,
+	Phase3RelicChestDropChance = 0.01,
 
 	------------------------------------------------------------
 	-- HUD sync interval
@@ -107,9 +107,12 @@ return {
 	Debug = {
 		ShowDevCombatPanel = true,
 		ShowAttackRanges = true,
-		SwordShieldWeaponDropChanceOverride = nil,
-		RelicChestDropChanceOverride = nil,
+		WeaponDropChanceOverride = nil,
+		Phase3RelicChestDropChanceOverride = nil,
+		ForcePhase3RelicChestOnKill = false,
 		OverrideWeaponId = nil,
 		ProgressionVerbose = false,
+		-- Phase 3 relic test seed only (Studio); not final unlock/equip. nil or {} = no-op.
+		Phase3TestRelicIds ={},
 	},
 }

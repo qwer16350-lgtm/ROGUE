@@ -1,4 +1,5 @@
 local RelicData = require(script.Parent:WaitForChild("RelicData"))
+local RelicModifierApplicator = require(script.Parent:WaitForChild("RelicModifierApplicator"))
 
 local UpgradeData = {
 
@@ -170,8 +171,8 @@ function UpgradeData.getSwordShieldEffectiveCombat(
 	weaponProfile,
 	upgrades,
 	startingRelicId: string?,
-	droppedRelicId: string?,
-	weaponGrade: string?
+	weaponGrade: string?,
+	phase3RelicIds: { string }?
 )
 	local minInterval = UpgradeData.Effects.attack_interval_down.MinAttackIntervalSeconds
 
@@ -190,7 +191,7 @@ function UpgradeData.getSwordShieldEffectiveCombat(
 	local sweepBaseDamage = sweepBase.BaseDamage
 	local thrustBaseDamage = thrustBase.BaseDamage
 
-	local m = RelicData.getCombatMultipliers(startingRelicId, droppedRelicId)
+	local m = RelicData.getCombatMultipliers(startingRelicId)
 	sweepBaseDamage *= m.SweepDamageMul
 	thrustBaseDamage *= m.ThrustDamageMul
 	baseAttackIntervalSeconds *= m.AttackIntervalMul
@@ -291,7 +292,7 @@ function UpgradeData.getSwordShieldEffectiveCombat(
 		thrustRangeStuds = thrustApplied.RangeStuds
 	end
 
-	return {
+	local effective = {
 		AttackIntervalSeconds = clampAttackIntervalSeconds(attackIntervalSeconds),
 		Sweep = {
 			RangeStuds = sweepRangeStuds,
@@ -305,6 +306,7 @@ function UpgradeData.getSwordShieldEffectiveCombat(
 			BaseDamage = thrustBaseDamage,
 		},
 	}
+	return RelicModifierApplicator.applyToSwordShieldEffective(effective, phase3RelicIds)
 end
 
 local function sanitizeStackFromUpgrades(upgrades, key: string): number
@@ -347,7 +349,13 @@ local function resolveMultiplierFromDefinition(definition, stackCountValue: numb
 	return 1 + valuePerStack * stack
 end
 
-function UpgradeData.getSpearEffectiveCombat(gameConfig, weaponProfile, upgrades, weaponGrade: string?)
+function UpgradeData.getSpearEffectiveCombat(
+	gameConfig,
+	weaponProfile,
+	upgrades,
+	weaponGrade: string?,
+	phase3RelicIds: { string }?
+)
 	local profile = type(weaponProfile) == "table" and weaponProfile or {}
 	local thrustBase = type(profile.Thrust) == "table" and profile.Thrust or {}
 
@@ -396,7 +404,7 @@ function UpgradeData.getSpearEffectiveCombat(gameConfig, weaponProfile, upgrades
 	}
 	local applied = UpgradeData.applyUpgradeDefinitionsToStats(baseStats, context, upgrades)
 
-	return {
+	local effective = {
 		AttackIntervalSeconds = clampAttackIntervalSeconds(applied.AttackIntervalSeconds or baseInterval),
 		Thrust = {
 			BaseDamage = applied.BaseDamage or baseStats.BaseDamage,
@@ -411,9 +419,17 @@ function UpgradeData.getSpearEffectiveCombat(gameConfig, weaponProfile, upgrades
 			GenericApplied = type(applied) == "table" and applied._GenericMeta or nil,
 		},
 	}
+
+	return RelicModifierApplicator.applyToSpearEffective(effective, phase3RelicIds)
 end
 
-function UpgradeData.getTwoHandedSwordEffectiveCombat(gameConfig, weaponProfile, upgrades, weaponGrade: string?)
+function UpgradeData.getTwoHandedSwordEffectiveCombat(
+	gameConfig,
+	weaponProfile,
+	upgrades,
+	weaponGrade: string?,
+	phase3RelicIds: { string }?
+)
 	local profile = type(weaponProfile) == "table" and weaponProfile or {}
 	local sweepBase = type(profile.Sweep) == "table" and profile.Sweep or {}
 
@@ -468,7 +484,7 @@ function UpgradeData.getTwoHandedSwordEffectiveCombat(gameConfig, weaponProfile,
 	}
 	local applied = UpgradeData.applyUpgradeDefinitionsToStats(baseStats, context, upgrades)
 
-	return {
+	local effective = {
 		AttackIntervalSeconds = clampAttackIntervalSeconds(applied.AttackIntervalSeconds or baseInterval),
 		Sweep = {
 			BaseDamage = applied.BaseDamage or baseStats.BaseDamage,
@@ -483,6 +499,8 @@ function UpgradeData.getTwoHandedSwordEffectiveCombat(gameConfig, weaponProfile,
 			GenericApplied = type(applied) == "table" and applied._GenericMeta or nil,
 		},
 	}
+
+	return RelicModifierApplicator.applyToTwoHandedSwordEffective(effective, phase3RelicIds)
 end
 
 --[[

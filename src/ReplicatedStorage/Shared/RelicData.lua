@@ -1,3 +1,6 @@
+-- StartingRelic SSOT for SwordShield (Lobby pick → startingRelicId).
+-- Run-time relic acquisition uses Phase3RelicChest / RelicDefinitions, not this module.
+
 local RelicData = {}
 
 local DEFINITIONS = {
@@ -25,99 +28,6 @@ local DEFINITIONS = {
 }
 
 local OFFER_IDS = { "old_shield_emblem", "cracked_sword_tip", "knights_belt" }
-
-local DROPPED_DEFINITIONS = {
-	reinforced_shield_rim = {
-		Id = "reinforced_shield_rim",
-		Label = "Reinforced Shield Rim",
-		SweepDamageMul = 1.15,
-		ThrustDamageMul = 1,
-		AttackIntervalMul = 1,
-	},
-	needle_edge = {
-		Id = "needle_edge",
-		Label = "Needle Edge",
-		SweepDamageMul = 1,
-		ThrustDamageMul = 1.15,
-		AttackIntervalMul = 1,
-	},
-	rhythm_strap = {
-		Id = "rhythm_strap",
-		Label = "Rhythm Strap",
-		SweepDamageMul = 1,
-		ThrustDamageMul = 1,
-		AttackIntervalMul = 0.90,
-	},
-	shield_spike = {
-		Id = "shield_spike",
-		Label = "Shield Spike",
-		SweepDamageMul = 1,
-		ThrustDamageMul = 1,
-		AttackIntervalMul = 1,
-		Effect = {
-			sweepKnockback = true,
-			knockbackDistance = 10,
-			knockbackForce = 30,
-		},
-	},
-}
-
-local DROPPED_OFFER_IDS = { "reinforced_shield_rim", "needle_edge", "rhythm_strap", "shield_spike" }
-
-local DROPPED_OFFER_WEIGHTS = {
-	reinforced_shield_rim = 25,
-	needle_edge = 25,
-	rhythm_strap = 25,
-	shield_spike = 25,
-}
-
-local function pickWeightedWithoutReplacement(
-	ids: { string },
-	weightsById: { [string]: number },
-	k: number
-): { string }
-	local pool = {}
-	for _, id in ipairs(ids) do
-		if type(id) == "string" then
-			table.insert(pool, id)
-		end
-	end
-
-	local out = {}
-	k = math.max(0, math.floor(k or 0))
-	while #out < k and #pool > 0 do
-		local total = 0
-		for _, id in ipairs(pool) do
-			local w = weightsById[id]
-			if type(w) ~= "number" or w <= 0 then
-				w = 1
-			end
-			total += w
-		end
-		if total <= 0 then
-			break
-		end
-		local r = math.random() * total
-		local pickIndex = nil
-		for i, id in ipairs(pool) do
-			local w = weightsById[id]
-			if type(w) ~= "number" or w <= 0 then
-				w = 1
-			end
-			r -= w
-			if r <= 0 then
-				pickIndex = i
-				break
-			end
-		end
-		if not pickIndex then
-			pickIndex = #pool
-		end
-		table.insert(out, pool[pickIndex])
-		table.remove(pool, pickIndex)
-	end
-	return out
-end
 
 local function onesMul(): { SweepDamageMul: number, ThrustDamageMul: number, AttackIntervalMul: number }
 	return {
@@ -175,39 +85,8 @@ function RelicData.getStartingRelicChoices(): { { Id: string, Label: string } }
 	return out
 end
 
-function RelicData.getDroppedRelicChoices(): { { Id: string, Label: string } }
-	local out = {}
-	local pickedIds = pickWeightedWithoutReplacement(DROPPED_OFFER_IDS, DROPPED_OFFER_WEIGHTS, 3)
-	if #pickedIds <= 0 then
-		pickedIds = DROPPED_OFFER_IDS
-	end
-	for _, id in ipairs(pickedIds) do
-		local def = DROPPED_DEFINITIONS[id]
-		if def then
-			table.insert(out, { Id = def.Id, Label = def.Label })
-		end
-	end
-	return out
-end
-
-function RelicData.getDroppedRelicEffect(droppedRelicId: string?): any
-	if type(droppedRelicId) ~= "string" then
-		return nil
-	end
-	local d = DROPPED_DEFINITIONS[droppedRelicId]
-	if type(d) ~= "table" then
-		return nil
-	end
-	local eff = d.Effect
-	if type(eff) ~= "table" then
-		return nil
-	end
-	return eff
-end
-
 function RelicData.getCombatMultipliers(
-	startingRelicId: string?,
-	droppedRelicId: string?
+	startingRelicId: string?
 ): { SweepDamageMul: number, ThrustDamageMul: number, AttackIntervalMul: number }
 	local s = onesMul()
 	if type(startingRelicId) == "string" then
@@ -215,13 +94,6 @@ function RelicData.getCombatMultipliers(
 		s.SweepDamageMul *= a.SweepDamageMul
 		s.ThrustDamageMul *= a.ThrustDamageMul
 		s.AttackIntervalMul *= a.AttackIntervalMul
-	end
-	if type(droppedRelicId) == "string" then
-		local d = DROPPED_DEFINITIONS[droppedRelicId]
-		local b = mulFromStartingDef(d)
-		s.SweepDamageMul *= b.SweepDamageMul
-		s.ThrustDamageMul *= b.ThrustDamageMul
-		s.AttackIntervalMul *= b.AttackIntervalMul
 	end
 	return s
 end

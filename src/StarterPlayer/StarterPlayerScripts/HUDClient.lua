@@ -44,6 +44,67 @@ local function formatSsUpgrade(v)
 	return "-"
 end
 
+local BUILD_TAG_DISPLAY_LIMIT = 24
+
+local function formatTagCountsLine(tagCounts: any): string
+	if type(tagCounts) ~= "table" then
+		return "-"
+	end
+	local entries = {}
+	for tag, count in pairs(tagCounts) do
+		if type(tag) == "string" and type(count) == "number" and count > 0 then
+			table.insert(entries, { tag = tag, count = count })
+		end
+	end
+	table.sort(entries, function(a, b)
+		if a.count ~= b.count then
+			return a.count > b.count
+		end
+		return a.tag < b.tag
+	end)
+	local chunks = {}
+	local limit = math.min(#entries, BUILD_TAG_DISPLAY_LIMIT)
+	for i = 1, limit do
+		local e = entries[i]
+		table.insert(chunks, string.format("%s: %d", e.tag, e.count))
+	end
+	if #entries > limit then
+		table.insert(chunks, string.format("... +%d more", #entries - limit))
+	end
+	if #chunks == 0 then
+		return "-"
+	end
+	return table.concat(chunks, ", ")
+end
+
+local function formatPhase3RelicIdsLine(ids: any): string
+	if type(ids) ~= "table" or #ids == 0 then
+		return "-"
+	end
+	local chunks = {}
+	for _, relicId in ipairs(ids) do
+		if type(relicId) == "string" and relicId ~= "" then
+			table.insert(chunks, relicId)
+		end
+	end
+	if #chunks == 0 then
+		return "-"
+	end
+	return table.concat(chunks, ", ")
+end
+
+local function formatClassScoresLine(scores: any): string
+	if type(scores) ~= "table" then
+		return "Guardian=- Slayer=- Lancer=-"
+	end
+	return string.format(
+		"Guardian=%s Slayer=%s Lancer=%s",
+		fmtDevScalar(scores.Guardian),
+		fmtDevScalar(scores.Slayer),
+		fmtDevScalar(scores.Lancer)
+	)
+end
+
 local function formatDevCombat(dc)
 	if type(dc) ~= "table" then
 		return "[DevCombat]\n(invalid)"
@@ -72,10 +133,8 @@ local function formatDevCombat(dc)
 	if isBasic then
 		table.insert(lines, "(BasicMagic 런 — 유물 미표시)")
 		table.insert(lines, "StartingRelicId: -")
-		table.insert(lines, "DroppedRelicId: -")
 	else
 		table.insert(lines, string.format("StartingRelicId: %s", strRelic(dc.StartingRelicId)))
-		table.insert(lines, string.format("DroppedRelicId: %s", strRelic(dc.DroppedRelicId)))
 	end
 	table.insert(lines, "--- upgrades (ss_*) ---")
 	for _, k in ipairs(SS_KEYS_ORDERED) do
@@ -140,6 +199,20 @@ local function formatDevCombat(dc)
 		table.insert(lines, "SpearEffective: --")
 		table.insert(lines, "TwoHandedSwordEffective: --")
 	end
+	local buildTag = dc.BuildTag
+	if type(buildTag) == "table" then
+		table.insert(lines, "--- BuildTag ---")
+		table.insert(lines, formatTagCountsLine(buildTag.TagCounts))
+		table.insert(lines, string.format("Phase3RelicIds: %s", formatPhase3RelicIdsLine(buildTag.Phase3RelicIds)))
+	end
+	local classDetection = dc.ClassDetection
+	if type(classDetection) == "table" then
+		table.insert(lines, "--- ClassDetection ---")
+		table.insert(lines, string.format("DetectedClass: %s", fmtDevScalar(classDetection.DetectedClass)))
+		table.insert(lines, string.format("Scores: %s", formatClassScoresLine(classDetection.Scores)))
+		table.insert(lines, string.format("PrimaryWeaponId: %s", fmtDevScalar(classDetection.PrimaryWeaponId)))
+		table.insert(lines, string.format("TieBreak: %s", fmtDevScalar(classDetection.TieBreakNote)))
+	end
 	local runInfo = dc.Run
 	if type(runInfo) == "table" then
 		table.insert(lines, "--- Run ---")
@@ -152,8 +225,8 @@ local function formatDevCombat(dc)
 		table.insert(lines, string.format("ShowAttackRanges: %s", fmtDevScalar(dbgInfo.ShowAttackRanges)))
 		table.insert(lines, string.format("ShowDevCombatPanel: %s", fmtDevScalar(dbgInfo.ShowDevCombatPanel)))
 	end
-	table.insert(lines, string.format("SwordShieldWeaponDropChance: %s", fmtDevScalar(dc.SwordShieldWeaponDropChance)))
-	table.insert(lines, string.format("SwordShieldWeaponDropChanceOverride: %s", fmtDevScalar(dc.SwordShieldWeaponDropChanceOverride)))
+	table.insert(lines, string.format("WeaponDropChance: %s", fmtDevScalar(dc.WeaponDropChance)))
+	table.insert(lines, string.format("WeaponDropChanceOverride: %s", fmtDevScalar(dc.WeaponDropChanceOverride)))
 	return table.concat(lines, "\n")
 end
 

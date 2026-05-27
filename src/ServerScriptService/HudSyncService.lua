@@ -4,6 +4,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local UpgradeData = require(Shared:WaitForChild("UpgradeData"))
 local WeaponProfiles = require(Shared:WaitForChild("WeaponProfiles"))
 
+local BuildTagService = require(script.Parent:WaitForChild("BuildTagService"))
+
 local HudSyncService = {}
 local DEBUG_STAGE_HUD = true
 
@@ -31,7 +33,6 @@ local function buildDevCombat(player, progressionService, gameConfig)
 		upgrades = {}
 	end
 	local startingRelicId = progressionService.getStartingRelicId(player)
-	local droppedRelicId = progressionService.getDroppedRelicId(player)
 	local weaponGrade = progressionService.getWeaponGrade(player)
 	local activeWeaponsMap = progressionService.getActiveWeapons(player)
 	local activeWeaponsList = {}
@@ -58,7 +59,6 @@ local function buildDevCombat(player, progressionService, gameConfig)
 		WeaponGrade = weaponGrade,
 		ActiveWeapons = activeWeaponsList,
 		StartingRelicId = startingRelicId,
-		DroppedRelicId = droppedRelicId,
 		Run = {
 			DefaultWeaponId = gameConfig.Run and gameConfig.Run.DefaultWeaponId,
 		},
@@ -67,8 +67,8 @@ local function buildDevCombat(player, progressionService, gameConfig)
 			ShowAttackRanges = dbg.ShowAttackRanges,
 			ShowDevCombatPanel = dbg.ShowDevCombatPanel,
 		},
-		SwordShieldWeaponDropChance = gameConfig.SwordShieldWeaponDropChance,
-		SwordShieldWeaponDropChanceOverride = dbg.SwordShieldWeaponDropChanceOverride,
+		WeaponDropChance = gameConfig.WeaponDropChance,
+		WeaponDropChanceOverride = dbg.WeaponDropChanceOverride,
 	}
 
 	for _, k in ipairs(SS_KEYS) do
@@ -87,13 +87,14 @@ local function buildDevCombat(player, progressionService, gameConfig)
 	end
 
 	if weaponId == "SwordShield" then
+		local phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player)
 		dc.SwordShieldEffective = UpgradeData.getSwordShieldEffectiveCombat(
 			gameConfig,
 			WeaponProfiles.SwordShield,
 			upgrades,
 			startingRelicId,
-			droppedRelicId,
-			weaponGrade
+			weaponGrade,
+			phase3RelicIds
 		)
 	elseif weaponId == "BasicMagic" then
 		dc.BasicMagicEffective = UpgradeData.getEffectiveCombatStats(gameConfig, upgrades)
@@ -102,7 +103,8 @@ local function buildDevCombat(player, progressionService, gameConfig)
 	if hasActiveWeapon("Spear") then
 		local sp = WeaponProfiles.Spear
 		local spGrade = progressionService.getWeaponGradeFor(player, "Spear")
-		local eff = UpgradeData.getSpearEffectiveCombat(gameConfig, sp, upgrades, spGrade)
+		local phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player)
+		local eff = UpgradeData.getSpearEffectiveCombat(gameConfig, sp, upgrades, spGrade, phase3RelicIds)
 		local th = type(eff) == "table" and eff.Thrust or nil
 		local meta = type(eff) == "table" and eff.Meta or nil
 		dc.SpearEffective = {
@@ -120,7 +122,8 @@ local function buildDevCombat(player, progressionService, gameConfig)
 	if hasActiveWeapon("TwoHandedSword") then
 		local tw = WeaponProfiles.TwoHandedSword
 		local twGrade = progressionService.getWeaponGradeFor(player, "TwoHandedSword")
-		local eff = UpgradeData.getTwoHandedSwordEffectiveCombat(gameConfig, tw, upgrades, twGrade)
+		local phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player)
+		local eff = UpgradeData.getTwoHandedSwordEffectiveCombat(gameConfig, tw, upgrades, twGrade, phase3RelicIds)
 		local sw = type(eff) == "table" and eff.Sweep or nil
 		local meta = type(eff) == "table" and eff.Meta or nil
 		dc.TwoHandedSwordEffective = {
@@ -134,6 +137,22 @@ local function buildDevCombat(player, progressionService, gameConfig)
 			th_sweep_range = meta and meta.th_sweep_range or 0,
 		}
 	end
+
+	local buildSnapshot = BuildTagService.computeBuildSnapshot({
+		activeWeapons = activeWeaponsMap,
+		phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player),
+		primaryWeaponId = weaponId,
+	})
+	dc.BuildTag = {
+		TagCounts = buildSnapshot.TagCounts,
+		Phase3RelicIds = buildSnapshot.Phase3RelicIds,
+	}
+	dc.ClassDetection = {
+		DetectedClass = buildSnapshot.DetectedClass,
+		Scores = buildSnapshot.ClassScores,
+		TieBreakNote = buildSnapshot.TieBreakNote,
+		PrimaryWeaponId = buildSnapshot.PrimaryWeaponId,
+	}
 
 	return dc
 end

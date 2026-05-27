@@ -1,14 +1,15 @@
 local RelicDropService = {}
 
-local DROP_KIND = "RelicChest"
+local DROP_KIND_PHASE3 = "Phase3RelicChest"
 local PICKUP_RADIUS_STUDS = 4
 local DROP_PART_SIZE = Vector3.new(2.75, 2.75, 2.75)
 
 type ProgressionApi = {
-	tryGrantDroppedRelicOfferFromChest: (Player) -> boolean,
+	tryGrantPhase3RelicOfferFromChest: (Player) -> boolean,
 }
 
 local activeRelicChests: { BasePart } = {}
+local progressionServiceRef: ProgressionApi? = nil
 
 local function ensureRelicChestFolder(workspace: Workspace): Folder
 	local folder = workspace:FindFirstChild("RelicChests")
@@ -53,7 +54,52 @@ local function clearDropsForUserId(userId: number)
 	end
 end
 
+local function createChestPart(
+	dropsFolder: Folder,
+	pos: Vector3,
+	boundPlayer: Player,
+	dropKind: string,
+	partName: string,
+	color: Color3,
+	lightColor: Color3
+): BasePart
+	local part = Instance.new("Part")
+	part.Name = partName
+	part.Size = DROP_PART_SIZE
+	part.Shape = Enum.PartType.Ball
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = false
+	part.Material = Enum.Material.Neon
+	part.Color = color
+	part.CFrame = CFrame.new(pos)
+	part:SetAttribute("DropKind", dropKind)
+	part:SetAttribute("BoundUserId", boundPlayer.UserId)
+
+	local light = Instance.new("PointLight")
+	light.Brightness = 2.75
+	light.Range = 14
+	light.Color = lightColor
+	light.Parent = part
+
+	local pe = Instance.new("ParticleEmitter")
+	pe.Color = ColorSequence.new(lightColor:Lerp(Color3.new(1, 1, 1), 0.35), lightColor)
+	pe.LightEmission = 1
+	pe.Size = NumberSequence.new(0.3, 0.1)
+	pe.Lifetime = NumberRange.new(0.45, 1.0)
+	pe.Rate = 14
+	pe.Speed = NumberRange.new(0.5, 1.6)
+	pe.SpreadAngle = Vector2.new(30, 30)
+	pe.Parent = part
+
+	part.Parent = dropsFolder
+	table.insert(activeRelicChests, part)
+	return part
+end
+
 function RelicDropService.init(players, runService, workspace: Workspace, progressionService: ProgressionApi)
+	progressionServiceRef = progressionService
 	ensureRelicChestFolder(workspace)
 
 	runService.Heartbeat:Connect(function()
@@ -76,9 +122,27 @@ function RelicDropService.init(players, runService, workspace: Workspace, progre
 			if not hrp then
 				continue
 			end
-			if (hrp.Position - part.Position).Magnitude <= PICKUP_RADIUS_STUDS then
-				progressionService.tryGrantDroppedRelicOfferFromChest(player)
-				destroyDropPart(part)
+			if (hrp.Position - part.Position).Magnitude > PICKUP_RADIUS_STUDS then
+				continue
+			end
+
+			local dropKind = part:GetAttribute("DropKind")
+			if dropKind ~= DROP_KIND_PHASE3 then
+				continue
+			end
+			local ps = progressionServiceRef
+			if type(ps) == "table" and type(ps.tryGrantPhase3RelicOfferFromChest) == "function" then
+				local granted = ps.tryGrantPhase3RelicOfferFromChest(player)
+				if granted then
+					destroyDropPart(part)
+				else
+					warn(
+						string.format(
+							"[RelicDropService] Phase3RelicChest pickup deferred or rejected (%s)",
+							player.Name
+						)
+					)
+				end
 			end
 		end
 	end)
@@ -88,7 +152,8 @@ function RelicDropService.init(players, runService, workspace: Workspace, progre
 	end)
 end
 
-function RelicDropService.spawnRelicChestAt(worldPosition: Vector3, boundPlayer: Player)
+--- Studio / server test: spawn Phase 3 relic chest (no kill drop). Pickup → Phase3Relic choice UI.
+function RelicDropService.spawnPhase3RelicChestAt(worldPosition: Vector3, boundPlayer: Player)
 	if typeof(boundPlayer) ~= "Instance" or not boundPlayer:IsA("Player") then
 		return
 	end
@@ -97,38 +162,15 @@ function RelicDropService.spawnRelicChestAt(worldPosition: Vector3, boundPlayer:
 	local dropsFolder = ensureRelicChestFolder(workspace)
 	local pos = worldPosition + Vector3.new(0, 1, 0)
 
-	local part = Instance.new("Part")
-	part.Name = "RelicChestDrop"
-	part.Size = DROP_PART_SIZE
-	part.Shape = Enum.PartType.Ball
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanTouch = false
-	part.CanQuery = false
-	part.Material = Enum.Material.Neon
-	part.Color = Color3.fromRGB(171, 85, 255)
-	part.CFrame = CFrame.new(pos)
-	part:SetAttribute("DropKind", DROP_KIND)
-	part:SetAttribute("BoundUserId", boundPlayer.UserId)
-
-	local light = Instance.new("PointLight")
-	light.Brightness = 2.75
-	light.Range = 14
-	light.Color = Color3.fromRGB(196, 120, 255)
-	light.Parent = part
-
-	local pe = Instance.new("ParticleEmitter")
-	pe.Color = ColorSequence.new(Color3.fromRGB(214, 160, 255), Color3.fromRGB(143, 74, 232))
-	pe.LightEmission = 1
-	pe.Size = NumberSequence.new(0.3, 0.1)
-	pe.Lifetime = NumberRange.new(0.45, 1.0)
-	pe.Rate = 14
-	pe.Speed = NumberRange.new(0.5, 1.6)
-	pe.SpreadAngle = Vector2.new(30, 30)
-	pe.Parent = part
-
-	part.Parent = dropsFolder
-	table.insert(activeRelicChests, part)
+	createChestPart(
+		dropsFolder,
+		pos,
+		boundPlayer,
+		DROP_KIND_PHASE3,
+		"Phase3RelicChestDrop",
+		Color3.fromRGB(72, 200, 160),
+		Color3.fromRGB(120, 255, 210)
+	)
 end
 
 return RelicDropService

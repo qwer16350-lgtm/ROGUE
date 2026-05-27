@@ -18,7 +18,7 @@ function CombatService.init(
 	local RunWeaponResolver = require(Shared:WaitForChild("RunWeaponResolver"))
 	local upgradeData = require(Shared:WaitForChild("UpgradeData"))
 	local weaponProfiles = require(Shared:WaitForChild("WeaponProfiles"))
-	local relicData = require(Shared:WaitForChild("RelicData"))
+	local phase3RelicPool = require(Shared:WaitForChild("Phase3RelicPool"))
 
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local vfxEvent = remotes:WaitForChild("VFXEvent")
@@ -143,7 +143,6 @@ function CombatService.init(
 
 	local swordShieldNextIsThrust: { [Player]: { [string]: boolean } } = {}
 	local warnedUnknownActiveWeapon: { [string]: boolean } = {}
-	local warnedShieldSpikeAnchoredPart = false
 	local HEALTH_ORB_CHANCE_STACK_ATTR = "ho_Chance_increase_stack"
 	local HEALTH_ORB_CHANCE_BONUS_PER_STACK = 0.005
 
@@ -156,14 +155,20 @@ function CombatService.init(
 
 	local xpDrop = gameConfig.XpOrbPerKill
 
-	local function getSwordShieldWeaponDropChance(): number
-		local base = gameConfig.SwordShieldWeaponDropChance
+	local WEAPON_DROP_KILL_WEAPONS: { [string]: boolean } = {
+		SwordShield = true,
+		Spear = true,
+		TwoHandedSword = true,
+	}
+
+	local function getWeaponDropChance(): number
+		local base = gameConfig.WeaponDropChance
 		if type(base) ~= "number" or base < 0 or base > 1 then
 			base = 0.01
 		end
 		local dbg = gameConfig.Debug
 		if type(dbg) == "table" then
-			local o = dbg.SwordShieldWeaponDropChanceOverride
+			local o = dbg.WeaponDropChanceOverride
 			if type(o) == "number" and o >= 0 and o <= 1 then
 				return o
 			end
@@ -171,19 +176,45 @@ function CombatService.init(
 		return base
 	end
 
-	local function getSwordShieldRelicChestDropChance(): number
-		local base = gameConfig.SwordShieldRelicChestDropChance
+	local PHASE3_CHEST_SOURCE_WEAPONS: { [string]: boolean } = {
+		TwoHandedSword = true,
+		Spear = true,
+		SwordShield = true,
+	}
+
+	local function getPhase3RelicChestDropChance(): number
+		local base = gameConfig.Phase3RelicChestDropChance
 		if type(base) ~= "number" or base < 0 or base > 1 then
-			base = 0.02
+			return 0
 		end
 		local dbg = gameConfig.Debug
 		if type(dbg) == "table" then
-			local o = dbg.RelicChestDropChanceOverride
+			local o = dbg.Phase3RelicChestDropChanceOverride
 			if type(o) == "number" and o >= 0 and o <= 1 then
 				return o
 			end
 		end
 		return base
+	end
+
+	local function shouldForcePhase3RelicChestOnKill(): boolean
+		local dbg = gameConfig.Debug
+		return type(dbg) == "table" and dbg.ForcePhase3RelicChestOnKill == true
+	end
+
+	local function canSpawnPhase3RelicChestOnKill(player: Player, sourceWeaponId: string): boolean
+		if not relicDropService or type(sourceWeaponId) ~= "string" then
+			return false
+		end
+		if not PHASE3_CHEST_SOURCE_WEAPONS[sourceWeaponId] then
+			return false
+		end
+		local weaponIds = progressionService.getActiveWeaponIdsForPhase3Offer(player)
+		if type(weaponIds) ~= "table" or #weaponIds == 0 then
+			return false
+		end
+		local owned = progressionService.getPhase3ActiveRelicIds(player)
+		return phase3RelicPool.hasAvailableChoicesForWeapons(weaponIds, owned)
 	end
 
 	local function applyDamageResolved(player: Player, entry, damage: number, sourceWeaponId: string)
@@ -226,8 +257,7 @@ function CombatService.init(
 				xpPickupService.spawnAt(hitPos, xpDrop)
 			end
 
-			-- Keep legacy policy: only SwordShield source weapon rolls weapon/relic drops.
-            if weaponDropService and sourceWeaponId == "SwordShield" and math.random() < getSwordShieldWeaponDropChance() then
+			if weaponDropService and WEAPON_DROP_KILL_WEAPONS[sourceWeaponId] and math.random() < getWeaponDropChance() then
 				local dropWeaponId = "SwordShield"
 				if type(weaponDropService.pickDropWeaponId) == "function" then
 					dropWeaponId = weaponDropService.pickDropWeaponId()
@@ -241,13 +271,10 @@ function CombatService.init(
 					weaponDropService.spawnSwordShieldDropAt(deathPos, player)
 				end
 			end
-			if
-				relicDropService
-				and sourceWeaponId == "SwordShield"
-				and progressionService.getWeaponId(player) == "SwordShield"
-				and math.random() < getSwordShieldRelicChestDropChance()
-			then
-				relicDropService.spawnRelicChestAt(deathPos, player)
+			if canSpawnPhase3RelicChestOnKill(player, sourceWeaponId) then
+				if shouldForcePhase3RelicChestOnKill() or math.random() < getPhase3RelicChestDropChance() then
+					relicDropService.spawnPhase3RelicChestAt(deathPos, player)
+				end
 			end
 			part:Destroy()
 		else
@@ -366,9 +393,16 @@ function CombatService.init(
 		local profile = weaponProfiles.SwordShield
 		local upgrades = progressionService.getUpgradeCounts(player)
 		local relicId = progressionService.getStartingRelicId(player)
-		local droppedRelicId = progressionService.getDroppedRelicId(player)
 		local weaponGrade = progressionService.getWeaponGradeFor(player, weaponId)
-		local eff = upgradeData.getSwordShieldEffectiveCombat(gameConfig, profile, upgrades, relicId, droppedRelicId, weaponGrade)
+		local phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player)
+		local eff = upgradeData.getSwordShieldEffectiveCombat(
+			gameConfig,
+			profile,
+			upgrades,
+			relicId,
+			weaponGrade,
+			phase3RelicIds
+		)
 		local interval = eff.AttackIntervalSeconds
 		local sweepEff = eff.Sweep
 		local thrustEff = eff.Thrust
@@ -489,43 +523,6 @@ function CombatService.init(
 		for _, entry in ipairs(inCone) do
 			local part = entry.part
 			if part.Parent then
-				-- DroppedRelic shield_spike: Sweep hit knockback only (server-side, XZ only).
-				if not useThrust and droppedRelicId == "shield_spike" then
-					local eff2 = relicData.getDroppedRelicEffect(droppedRelicId)
-					if type(eff2) == "table" and eff2.sweepKnockback == true then
-						local force = eff2.knockbackForce
-						if type(force) ~= "number" or force <= 0 then
-							force = 30
-						end
-						local knockbackDuration = eff2.knockbackDuration
-						if type(knockbackDuration) ~= "number" or knockbackDuration <= 0 then
-							knockbackDuration = 0.20
-						end
-						if part.Anchored then
-							if warnedShieldSpikeAnchoredPart ~= true then
-								warn("[CombatService] shield_spike knockback skipped: enemy part is Anchored.")
-								warnedShieldSpikeAnchoredPart = true
-							end
-						else
-							local offset = part.Position - root.Position
-							local dirXZ = Vector3.new(offset.X, 0, offset.Z)
-							if dirXZ.Magnitude < 1e-4 then
-								dirXZ = Vector3.new(forward.X, 0, forward.Z)
-							end
-							if dirXZ.Magnitude >= 1e-4 then
-								local dir = dirXZ.Unit
-								local v = part.AssemblyLinearVelocity
-								part.AssemblyLinearVelocity = Vector3.new(dir.X * force, v.Y, dir.Z * force)
-								if type(entry.state) == "table" then
-									entry.state.knockbackUntil = math.max(
-										tonumber(entry.state.knockbackUntil) or 0,
-										now + knockbackDuration
-									)
-								end
-							end
-						end
-					end
-				end
 				applyDamageResolved(player, entry, damage, "SwordShield")
 			end
 		end
@@ -538,7 +535,14 @@ function CombatService.init(
 		end
 		local upgrades = progressionService.getUpgradeCounts(player)
 		local weaponGrade = progressionService.getWeaponGradeFor(player, weaponId)
-		local eff = upgradeData.getSpearEffectiveCombat(gameConfig, profile, upgrades, weaponGrade)
+		local phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player)
+		local eff = upgradeData.getSpearEffectiveCombat(
+			gameConfig,
+			profile,
+			upgrades,
+			weaponGrade,
+			phase3RelicIds
+		)
 		local thrustEff = type(eff) == "table" and eff.Thrust or nil
 		if type(thrustEff) ~= "table" then
 			return
@@ -631,7 +635,14 @@ function CombatService.init(
 		end
 		local upgrades = progressionService.getUpgradeCounts(player)
 		local weaponGrade = progressionService.getWeaponGradeFor(player, weaponId)
-		local effective = upgradeData.getTwoHandedSwordEffectiveCombat(gameConfig, profile, upgrades, weaponGrade)
+		local phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player)
+		local effective = upgradeData.getTwoHandedSwordEffectiveCombat(
+			gameConfig,
+			profile,
+			upgrades,
+			weaponGrade,
+			phase3RelicIds
+		)
 		local effSweep = type(effective) == "table" and effective.Sweep or nil
 
 		local interval = type(effective) == "table" and type(effective.AttackIntervalSeconds) == "number"

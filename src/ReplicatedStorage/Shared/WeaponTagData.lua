@@ -1,5 +1,7 @@
 -- Weapon tag SSOT for Phase 3 (implemented weapons only). Combat/relic/class wiring comes later.
--- Tag arrays never contain "none"; use empty tables where applicable.
+-- Row fields: weaponId, displayName, weaponTag, typeTags, attackTags, rangeTags, tempoTags.
+-- Effect/status tags (burn, bleed, knockback, pierce, etc.) are not weapon defaults; relics / ATTACKEFFECT / class / effect system assign them later.
+-- Tag arrays never contain "none" or "-"; use empty tables where applicable.
 
 local WeaponTagData = {}
 
@@ -23,7 +25,6 @@ WeaponTagData.WeaponsById = {
 		weaponTag = "ss",
 		typeTags = { "melee" },
 		attackTags = { "sweep", "thrust" },
-		effectTags = { "block", "knockback" },
 		rangeTags = { "close" },
 		tempoTags = { "normal" },
 	},
@@ -33,7 +34,6 @@ WeaponTagData.WeaponsById = {
 		weaponTag = "sp",
 		typeTags = { "melee" },
 		attackTags = { "thrust" },
-		effectTags = { "pierce" },
 		rangeTags = { "mid" },
 		tempoTags = { "slow" },
 	},
@@ -43,13 +43,12 @@ WeaponTagData.WeaponsById = {
 		weaponTag = "th",
 		typeTags = { "melee" },
 		attackTags = { "sweep" },
-		effectTags = { "slash" },
 		rangeTags = { "mid" },
 		tempoTags = { "slow" },
 	},
 }
 
-local TAG_ARRAY_KEYS = { "typeTags", "attackTags", "effectTags", "rangeTags", "tempoTags" }
+local TAG_ARRAY_KEYS = { "typeTags", "attackTags", "rangeTags", "tempoTags" }
 
 local function getWeaponTagOrNil(weaponId: string): any
 	if type(weaponId) ~= "string" or weaponId == "" then

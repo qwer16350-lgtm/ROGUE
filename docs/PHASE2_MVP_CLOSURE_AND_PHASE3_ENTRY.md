@@ -104,19 +104,22 @@
 
 현재 ProgressionService에는 여러 choice-kind와 pending 상태가 누적되어 있다.
 
-**예상·현재 choice kind:**
+**현재 choice kind (런타임):**
 
 - Upgrade
-- DroppedRelic
-- StartingWeapon
-- legacy StartingRelic branch 가능성
+- StartingWeapon (테스트용)
+- Phase3Relic (`Phase3RelicChest` 픽업 후)
 
-**pending 상태 예:**
+**legacy / removed:**
+
+- **DroppedRelic** — Progression offer·submit·`pendingDroppedRelicByPlayer` **제거됨** (Step A). Phase 2 보라 RelicChest kill drop **제거됨**.
+- StartingRelic Stage `ChoiceKind` 오퍼 없음 (Lobby only)
+
+**pending 상태 (현재):**
 
 - `pendingLevelUpOfferByPlayer`
-- `pendingDroppedRelicByPlayer`
 - `pendingStartingWeaponByPlayer`
-- legacy `pendingStartingRelicByPlayer` 가능성
+- `pendingPhase3RelicByPlayer`
 
 Phase 3에서 ClassChoice, RelicRewardChoice, BlueprintChoice 등이 추가될 수 있으므로 **choice/pending 구조 정리**가 필요하다.
 
@@ -134,53 +137,26 @@ StartingRelic은 **Lobby Station에서 선택하는 구조**로 이동했다.
 
 단, **삭제 전 호출부 grep 확인**이 필요하다.
 
-### DroppedRelic SwordShield dependency (코드 기준, Phase 2)
+### DroppedRelic / Phase 2 RelicChest (historical — removed from runtime)
 
-> **Phase 2 기준 DroppedRelic은 최소 획득·선택 흐름 검증용 구조이며, 현재 weapon-agnostic relic system으로 간주하지 않는다.**  
-> **SwordShield 중심 제약이 남아 있을 수 있으므로 Phase 3에서 tag-based / weapon-specific relic 구조를 설계하기 전까지 이 구조를 그대로 확장하지 않는다.**
+> **Step A:** Phase 2 **보라 RelicChest kill drop**, `spawnRelicChestAt`, `tryGrantDroppedRelicOfferFromChest`, `tryFlushDroppedRelicOffer`, `pendingDroppedRelicByPlayer`, `ChoiceKind = "DroppedRelic"` 발송·submit 분기는 **ProgressionService에서 제거**됨.  
+> **현재 relic 획득(런타임):** `Phase3RelicChest` → `ChoiceKind = "Phase3Relic"` → `phase3ActiveRelicIds` (TH/Spear 킬 드랍 등).  
+> **Step B/C 완료:** `droppedRelicId` state/read·`shield_spike` 분기 제거. RelicData `DROPPED_*`·dropped API **Step C에서 제거** — 모듈은 StartingRelic-only.
 
-#### 코드에서 확인한 관련 위치
+#### Historical reference (pre-removal)
 
-| 영역 | 파일 | 내용 |
-|------|------|------|
-| RelicChest 스폰 조건 | `CombatService.lua` | 킬 시 weapon/relic 드랍은 주석대로 **SwordShield source weapon** 정책 |
-| RelicChest 상호작용 | `RelicDropService.lua` | 상자 접촉 시 `tryGrantDroppedRelicOfferFromChest` 호출 (서비스 자체에는 무기 종류 검사 없음) |
-| 드랍 유물 오퍼·제출 | `ProgressionService.lua` | `tryFlushDroppedRelicOffer`, `tryGrantDroppedRelicOfferFromChest`, `LevelUpChoiceSubmit` DroppedRelic 분기 |
-| 유물 정의·배율 | `RelicData.lua` | `DROPPED_DEFINITIONS`, `getDroppedRelicChoices`, `getCombatMultipliers`, `getDroppedRelicEffect` |
-| 전투 배율·특수 효과 | `CombatService.lua` | `heartbeatSwordShieldWeapon` 경로, `getSwordShieldEffectiveCombat`, `shield_spike` 처리 |
+| 영역 | 파일 | 과거 내용 |
+|------|------|-----------|
+| RelicChest 스폰 | `CombatService.lua` | SS 킬 시 보라 RelicChest — **removed** |
+| RelicChest 상호작용 | `RelicDropService.lua` | `tryGrantDroppedRelicOfferFromChest` — **removed** |
+| 드랍 유물 오퍼 | `ProgressionService.lua` | DroppedRelic pending/flush — **removed** |
+| 유물 정의·배율 | `RelicData.lua` | `DROPPED_DEFINITIONS` — **removed** (Step C); Starting 3종만 |
+| SS 전투 read | `CombatService.lua` | `startingRelicId` via UpgradeData only — dropped read **removed** (Step B) |
 
-#### 1) 드랍 조건 (RelicChest)
+#### SS dependency (historical note)
 
-- `CombatService`: 주석 **「Keep legacy policy: only SwordShield source weapon rolls weapon/relic drops」**  
-  - 무기 드랍: `sourceWeaponId == "SwordShield"` 및 SwordShield 무기 드랍 확률.  
-  - **RelicChest**: `sourceWeaponId == "SwordShield"` **이고** `progressionService.getWeaponId(player) == "SwordShield"` **이고** `getSwordShieldRelicChestDropChance()` 롤이 성공할 때만 `spawnRelicChestAt`.  
-- 다른 무기로 적을 처치한 킬에는 이 경로로 **유물 상자가 스폰되지 않는다** (Phase 2 의도된 제한).
-
-#### 2) 획득·선택 조건 (ProgressionService)
-
-- `tryGrantDroppedRelicOfferFromChest`: `state.weaponId ~= "SwordShield"` 이면 즉시 `false` (오퍼 부여 안 함).  
-- `tryFlushDroppedRelicOffer`: 동일하게 `state.weaponId ~= "SwordShield"` 이면 return.  
-- `LevelUpChoiceSubmit` DroppedRelic 분기: `st.weaponId ~= "SwordShield"` 이면 제출 거절·pending 정리.  
-- 즉 **DroppedRelic UI·pending 흐름은 SwordShield 런에 묶여 있다.** Spear / TwoHandedSword 등에서는 동일 분기를 복붙 확장하면 안 된다(Phase 3 설계 후 교체).
-
-#### 3) 데이터·효과 (RelicData)
-
-- `DROPPED_DEFINITIONS`는 **SweepDamageMul / ThrustDamageMul / AttackIntervalMul** 등 **SwordShield형 근접 스탯 모델**에 맞춘 필드명을 사용한다.  
-- `shield_spike`는 `Effect`(예: sweepKnockback 등)를 가진다.  
-- `getCombatMultipliers(startingRelicId, droppedRelicId)`로 드랍 유물 배율이 합성된다.
-
-#### 4) 전투 적용 (CombatService)
-
-- 런타임 공격 루프는 **SwordShield**일 때 `heartbeatSwordShieldWeapon`으로 진입한다.  
-- `progressionService.getDroppedRelicId(player)` 및 `upgradeData.getSwordShieldEffectiveCombat(..., droppedRelicId, ...)` 로 배율 반영.  
-- **shield_spike**: Sweep 히트 시 `relicData.getDroppedRelicEffect`로 이펙트를 읽어 **넉백 등 서버 처리** (주석: DroppedRelic shield_spike, XZ knockback).  
-- 위 경로는 **SS 하트비트 전용**이며, 범용 무기 루프에 이식된 상태가 아니다.
-
-#### Phase 2 vs Phase 3
-
-- **Phase 2 MVP**: 위 제약을 **허용된 최소·임시 구조**로 둔다. 드랍·선택·배율·`shield_spike` 연동은 **검증 목적**에 맞게 동작하면 된다.  
-- **Phase 3**: **relic tag, weapon tag, attack type, trigger condition** 등을 분리한 뒤, tag-based / weapon-specific relic 설계를 한다.  
-- **경고 (Cursor/AI·인간 공통)**: Spear / TwoHandedSword / 추후 무기에 DroppedRelic을 넣을 때 **`ProgressionService`의 `weaponId == "SwordShield"` 조건이나 `CombatService`의 SS 전용 분기를 그대로 복제해 확장하지 말 것.** 새 설계·PLAN 없이 기존 패턴을 전 무기에 복붙하면 기술 부채가 고착된다.
+- 과거 DroppedRelic offer는 `weaponId == "SwordShield"`에 묶여 있었음. **현재 SS**는 Lobby `startingRelicId` → `RelicData.getCombatMultipliers`만 사용.
+- Spear/TH relic은 **Phase3Relic** + `RelicDefinitions`만 확장. DroppedRelic 패턴 복제 **금지**.
 
 ### Debug print noise
 
@@ -212,7 +188,7 @@ Phase 3 진입 전 추천 작업 순서.
 2. StartingRelic Stage fallback legacy 제거 PLAN 작성
 3. StartingRelic legacy 제거 패치
 4. StartingWeapon 테스트용 구조 주석·플래그화
-5. DroppedRelic SwordShield 종속성 문서화 (**본 문서 §6「DroppedRelic SwordShield dependency」**)
+5. ~~DroppedRelic offer/data~~ → **removed** (Step A–C); historical §「DroppedRelic / Phase 2 RelicChest」참고
 6. ChoiceFlow·pending 공통화 PLAN 작성
 7. Phase 3 tag·relic·class 구조 설계 진입
 
