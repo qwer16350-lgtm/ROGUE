@@ -137,6 +137,74 @@ function ProgressionService.getActiveWeaponIdsForPhase3Offer(player): { string }
 	return {}
 end
 
+--- nil = legacy (Phase3RelicPool treats all static pool as owned). table (incl. {}) = strict session owned.
+function ProgressionService.getSessionOwnedRelicIdsForChest(_player: Player): { string }?
+	local dbg = gameConfigRef and gameConfigRef.Debug
+	if type(dbg) ~= "table" then
+		return nil
+	end
+	if dbg.Phase3FakeOwnedRelicIds == nil then
+		return nil
+	end
+	local src = dbg.Phase3FakeOwnedRelicIds
+	if type(src) ~= "table" then
+		return nil
+	end
+	local out: { string } = {}
+	for _, relicId in ipairs(src) do
+		if type(relicId) == "string" and relicId ~= "" then
+			table.insert(out, relicId)
+		end
+	end
+	return out
+end
+
+function ProgressionService.getFakeEquippedStartingRelicIdsForChest(_player: Player): { string }
+	local out: { string } = {}
+	local dbg = gameConfigRef and gameConfigRef.Debug
+	if type(dbg) ~= "table" then
+		return out
+	end
+	local src = dbg.Phase3FakeEquippedStartingRelicIds
+	if type(src) ~= "table" then
+		return out
+	end
+	for _, relicId in ipairs(src) do
+		if type(relicId) == "string" and relicId ~= "" then
+			table.insert(out, relicId)
+		end
+	end
+	return out
+end
+
+function ProgressionService.buildPhase3RelicOfferFilters(player: Player): {
+	sessionOwnedRelicIds: { string }?,
+	equippedStartingRelicIds: { string },
+	activeRelicIds: { string },
+	requireRunChestEligible: boolean,
+}
+	return {
+		sessionOwnedRelicIds = ProgressionService.getSessionOwnedRelicIdsForChest(player),
+		equippedStartingRelicIds = ProgressionService.getFakeEquippedStartingRelicIdsForChest(player),
+		activeRelicIds = ProgressionService.getPhase3ActiveRelicIds(player),
+		requireRunChestEligible = true,
+	}
+end
+
+function ProgressionService.hasPhase3RelicChestOfferAvailable(player: Player): boolean
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return false
+	end
+	if type(phase3RelicPoolModule) ~= "table" then
+		return false
+	end
+	local weaponIds = ProgressionService.getActiveWeaponIdsForPhase3Offer(player)
+	if type(weaponIds) ~= "table" or #weaponIds == 0 then
+		return false
+	end
+	local filters = ProgressionService.buildPhase3RelicOfferFilters(player)
+	return phase3RelicPoolModule.hasAvailableChoicesForWeapons(weaponIds, filters)
+end
 function ProgressionService.getPhase3ActiveRelicIds(player): { string }
 	local state = progressByPlayer[player]
 	local src = type(state) == "table" and state.phase3ActiveRelicIds
@@ -1012,8 +1080,8 @@ function ProgressionService.buildPhase3RelicOffer(player: Player)
 		return nil
 	end
 	local weaponIds = ProgressionService.getActiveWeaponIdsForPhase3Offer(player)
-	local owned = ProgressionService.getPhase3ActiveRelicIds(player)
-	local choices = phase3RelicPoolModule.buildOfferChoicesForWeapons(weaponIds, owned, 3)
+	local filters = ProgressionService.buildPhase3RelicOfferFilters(player)
+	local choices = phase3RelicPoolModule.buildOfferChoicesForWeapons(weaponIds, filters, 3)
 	if type(choices) ~= "table" or #choices == 0 then
 		return nil
 	end

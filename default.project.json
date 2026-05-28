@@ -31,6 +31,15 @@
         },
         "WeaponPickupNotify": {
           "$className": "RemoteEvent"
+        },
+        "GetRelicProfile": {
+          "$className": "RemoteFunction"
+        },
+        "CraftRelicRequest": {
+          "$className": "RemoteFunction"
+        },
+        "EquipStartingRelicsRequest": {
+          "$className": "RemoteFunction"
         }
       }
     },

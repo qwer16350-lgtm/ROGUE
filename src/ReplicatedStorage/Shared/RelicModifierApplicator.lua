@@ -22,6 +22,7 @@ local STAT_FIELD_TH = {
 
 local STAT_FIELD_SPEAR = {
 	thrustBaseDamage = { thrust = true, key = "BaseDamage" },
+	thrustRangeStuds = { thrust = true, key = "RangeStuds" },
 	attackIntervalSeconds = { thrust = false, key = "AttackIntervalSeconds" },
 }
 

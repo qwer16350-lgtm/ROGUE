@@ -21,8 +21,16 @@ local function startLobbyBranch()
 	end
 
 	local Teleport = require(ServerScriptService:WaitForChild("Run"):WaitForChild("Teleport"))
+	local GameConfig = require(Shared:WaitForChild("GameConfig"))
+	local RelicProfileService = require(ServerScriptService:WaitForChild("RelicProfileService"))
 	local LobbyBootstrap = require(ServerScriptService:WaitForChild("Lobby"):WaitForChild("LobbyBootstrap"))
 	local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+
+	RelicProfileService.init({
+		players = Players,
+		replicatedStorage = ReplicatedStorage,
+		gameConfig = GameConfig,
+	})
 
 	LobbyBootstrap.init({
 		players          = Players,

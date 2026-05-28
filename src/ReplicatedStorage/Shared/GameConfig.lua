@@ -96,6 +96,7 @@ return {
 	------------------------------------------------------------
 	WeaponDropChance = 0.01,
 	Phase3RelicChestDropChance = 0.01,
+	RelicStartingSlotMax = 1,
 
 	------------------------------------------------------------
 	-- HUD sync interval
@@ -111,8 +112,11 @@ return {
 		Phase3RelicChestDropChanceOverride = nil,
 		ForcePhase3RelicChestOnKill = false,
 		OverrideWeaponId = nil,
+		Phase3TestRelicIds = nil,
+		Phase3FakeOwnedRelicIds = nil,
+		Phase3FakeEquippedStartingRelicIds = {},
 		ProgressionVerbose = false,
-		-- Phase 3 relic test seed only (Studio); not final unlock/equip. nil or {} = no-op.
-		Phase3TestRelicIds ={},
+		-- Lobby RelicProfileService session seed (Studio). nil = empty profile on join.
+		RelicProfileTestSeed = nil,
 	},
 }

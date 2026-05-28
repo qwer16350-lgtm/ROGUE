@@ -3,12 +3,15 @@
 -- Existing RelicData remains the Phase 2 runtime relic path.
 -- Only schema-safe candidates are registered here.
 -- Combat/Progression integration is a later milestone.
+-- Meta progression fields (blueprintId, craftCost, is*Eligible) are dead until Step 3+.
+-- RelicModifierApplicator / Phase3RelicPool / ProgressionService do not read them yet.
 
 local RelicDefinitions = {}
 
 RelicDefinitions.ALLOWED_STATS = {
 	sweepBaseDamage = true,
 	thrustBaseDamage = true,
+	thrustRangeStuds = true,
 	attackIntervalSeconds = true,
 	blockChance = true,
 	attackHitCount = true,
@@ -66,6 +69,15 @@ RelicDefinitions.DefinitionsById = {
 		classTagMatch = "TRUE",
 		implementationTier = "A",
 		mvpPriority = "High",
+		blueprintId = "mercenarys_baldric",
+		craftCost = {
+			blueprintProgressMin = 1,
+			materials = {},
+		},
+		isCraftable = true,
+		isStartingEligible = false,
+		isRunChestEligible = true,
+		isPermanentUnlockable = true,
 		modifiers = {
 			{
 				kind = "stat",
@@ -100,6 +112,15 @@ RelicDefinitions.DefinitionsById = {
 		classTagMatch = "TRUE",
 		implementationTier = "A",
 		mvpPriority = "High",
+		blueprintId = "shattering_light",
+		craftCost = {
+			blueprintProgressMin = 1,
+			materials = {},
+		},
+		isCraftable = true,
+		isStartingEligible = false,
+		isRunChestEligible = true,
+		isPermanentUnlockable = true,
 		modifiers = {
 			{
 				kind = "stat",
@@ -146,6 +167,15 @@ RelicDefinitions.DefinitionsById = {
 		classTagMatch = "TRUE",
 		implementationTier = "A",
 		mvpPriority = "Medium",
+		blueprintId = "last_giants_claw",
+		craftCost = {
+			blueprintProgressMin = 1,
+			materials = {},
+		},
+		isCraftable = true,
+		isStartingEligible = false,
+		isRunChestEligible = true,
+		isPermanentUnlockable = true,
 		modifiers = {
 			{
 				kind = "stat",
@@ -191,6 +221,15 @@ RelicDefinitions.DefinitionsById = {
 		classTagMatch = "TRUE",
 		implementationTier = "A",
 		mvpPriority = "Medium",
+		blueprintId = "needle_edge",
+		craftCost = {
+			blueprintProgressMin = 1,
+			materials = {},
+		},
+		isCraftable = true,
+		isStartingEligible = false,
+		isRunChestEligible = true,
+		isPermanentUnlockable = true,
 		modifiers = {
 			{
 				kind = "stat",
@@ -206,6 +245,48 @@ RelicDefinitions.DefinitionsById = {
 			},
 		},
 		notes = "RL.TAGS row #27; Spear-only via weaponTag sp.",
+	},
+	giants_pike = {
+		id = "giants_pike",
+		sourceRow = 16,
+		label = "Giant's Pike",
+		relicGroup = "Weapon-based relic (무기 유물)",
+		description = "Spear Thrust 사거리 ×2.0",
+		classTags = { "Lancer" },
+		effectTargetTags = { "sp", "thrust" },
+		modifierTags = { "Range" },
+		triggerTags = {},
+		obtainTags = { "Crafted" },
+		unlockTags = { "Blueprint" },
+		stackTags = "Stackable",
+		requiredMaterials = "",
+		classTagMatch = "TRUE",
+		implementationTier = "B",
+		mvpPriority = "Medium",
+		blueprintId = "giants_pike",
+		craftCost = {
+			blueprintProgressMin = 1,
+			materials = {},
+		},
+		isCraftable = true,
+		isStartingEligible = false,
+		isRunChestEligible = true,
+		isPermanentUnlockable = true,
+		modifiers = {
+			{
+				kind = "stat",
+				targetTags = {
+					weaponTag = "sp",
+					attackTag = "thrust",
+				},
+				stat = "thrustRangeStuds",
+				operation = "mul",
+				value = 2.0,
+				requiresTuning = false,
+				notes = "Spear thrust range x2.0",
+			},
+		},
+		notes = "RL.TAGS row #16; Phase3 post-apply on Thrust.RangeStuds (not snapshot).",
 	},
 	run_reinforced_rim = {
 		id = "run_reinforced_rim",
@@ -224,6 +305,15 @@ RelicDefinitions.DefinitionsById = {
 		classTagMatch = "TRUE",
 		implementationTier = "A",
 		mvpPriority = "Medium",
+		blueprintId = "run_reinforced_rim",
+		craftCost = {
+			blueprintProgressMin = 1,
+			materials = {},
+		},
+		isCraftable = true,
+		isStartingEligible = false,
+		isRunChestEligible = true,
+		isPermanentUnlockable = true,
 		modifiers = {
 			{
 				kind = "stat",
@@ -257,6 +347,15 @@ RelicDefinitions.DefinitionsById = {
 		classTagMatch = "TRUE",
 		implementationTier = "A",
 		mvpPriority = "Medium",
+		blueprintId = "run_rhythm_harness",
+		craftCost = {
+			blueprintProgressMin = 1,
+			materials = {},
+		},
+		isCraftable = true,
+		isStartingEligible = false,
+		isRunChestEligible = true,
+		isPermanentUnlockable = true,
 		modifiers = {
 			{
 				kind = "stat",
@@ -365,6 +464,87 @@ local function validateModifier(warnings: { string }, relicId: string, modIndex:
 	return true
 end
 
+local META_PROGRESSION_BOOL_KEYS = {
+	"isCraftable",
+	"isStartingEligible",
+	"isRunChestEligible",
+	"isPermanentUnlockable",
+}
+
+local function validateMetaProgression(warnings: { string }, relicId: string, row: any)
+	if type(row) ~= "table" then
+		return
+	end
+
+	local blueprintId = row.blueprintId
+	if blueprintId ~= nil then
+		if type(blueprintId) ~= "string" or blueprintId == "" then
+			table.insert(
+				warnings,
+				string.format("[RelicDefinitions] %s: blueprintId must be a non-empty string", relicId)
+			)
+		end
+	end
+
+	local craftCost = row.craftCost
+	if craftCost ~= nil then
+		if type(craftCost) ~= "table" then
+			table.insert(warnings, string.format("[RelicDefinitions] %s: craftCost must be a table", relicId))
+		else
+			local bpm = craftCost.blueprintProgressMin
+			if bpm ~= nil and type(bpm) ~= "number" then
+				table.insert(
+					warnings,
+					string.format(
+						"[RelicDefinitions] %s: craftCost.blueprintProgressMin must be nil or number",
+						relicId
+					)
+				)
+			end
+			local materials = craftCost.materials
+			if materials ~= nil then
+				if type(materials) ~= "table" then
+					table.insert(
+						warnings,
+						string.format("[RelicDefinitions] %s: craftCost.materials must be nil or table", relicId)
+					)
+				else
+					for matKey, amount in pairs(materials) do
+						if type(matKey) ~= "string" or matKey == "" then
+							table.insert(
+								warnings,
+								string.format(
+									"[RelicDefinitions] %s: craftCost.materials keys must be non-empty strings",
+									relicId
+								)
+							)
+						elseif type(amount) ~= "number" then
+							table.insert(
+								warnings,
+								string.format(
+									"[RelicDefinitions] %s: craftCost.materials[%s] must be number",
+									relicId,
+									tostring(matKey)
+								)
+							)
+						end
+					end
+				end
+			end
+		end
+	end
+
+	for _, key in ipairs(META_PROGRESSION_BOOL_KEYS) do
+		local v = row[key]
+		if v ~= nil and type(v) ~= "boolean" then
+			table.insert(
+				warnings,
+				string.format("[RelicDefinitions] %s: %s must be nil or boolean", relicId, key)
+			)
+		end
+	end
+end
+
 function RelicDefinitions.getDefinition(id: string): any
 	if type(id) ~= "string" or id == "" then
 		return nil
@@ -453,6 +633,8 @@ function RelicDefinitions.validate(): (boolean, { string })
 				validateModifier(warnings, tostring(key), i, mod)
 			end
 		end
+
+		validateMetaProgression(warnings, tostring(key), row)
 	end
 
 	local ok = #warnings == 0

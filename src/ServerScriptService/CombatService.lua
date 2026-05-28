@@ -18,8 +18,6 @@ function CombatService.init(
 	local RunWeaponResolver = require(Shared:WaitForChild("RunWeaponResolver"))
 	local upgradeData = require(Shared:WaitForChild("UpgradeData"))
 	local weaponProfiles = require(Shared:WaitForChild("WeaponProfiles"))
-	local phase3RelicPool = require(Shared:WaitForChild("Phase3RelicPool"))
-
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local vfxEvent = remotes:WaitForChild("VFXEvent")
 	local damageNumberEvent = remotes:WaitForChild("DamageNumberEvent") :: RemoteEvent
@@ -209,12 +207,7 @@ function CombatService.init(
 		if not PHASE3_CHEST_SOURCE_WEAPONS[sourceWeaponId] then
 			return false
 		end
-		local weaponIds = progressionService.getActiveWeaponIdsForPhase3Offer(player)
-		if type(weaponIds) ~= "table" or #weaponIds == 0 then
-			return false
-		end
-		local owned = progressionService.getPhase3ActiveRelicIds(player)
-		return phase3RelicPool.hasAvailableChoicesForWeapons(weaponIds, owned)
+		return progressionService.hasPhase3RelicChestOfferAvailable(player)
 	end
 
 	local function applyDamageResolved(player: Player, entry, damage: number, sourceWeaponId: string)
