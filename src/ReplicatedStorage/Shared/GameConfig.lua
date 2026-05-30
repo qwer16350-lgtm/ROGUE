@@ -97,6 +97,27 @@ return {
 	WeaponDropChance = 0.01,
 	Phase3RelicChestDropChance = 0.01,
 	RelicStartingSlotMax = 1,
+	------------------------------------------------------------
+	-- Lobby relic profile persistence (Step 5A)
+	------------------------------------------------------------
+
+	------------------------------------------------------------
+	-- Stage run-end material grant (Step 5B, placeholder RewardBudget)
+	------------------------------------------------------------
+	RunResultReward = {
+		Enabled = true,
+		ClearShard = 3,
+		FailShard = 1,
+		LastFloorClearAncientShard = 1,
+	},
+	RelicProfilePersistence = {
+		Enabled = true,
+		DataStoreName = "PlayerRelicProfile",
+		AutosaveIntervalSeconds = 60,
+		EquipSaveDebounceSeconds = 5,
+		LoadRetryCount = 3,
+		SaveRetryCount = 3,
+	},
 
 	------------------------------------------------------------
 	-- HUD sync interval
@@ -117,6 +138,10 @@ return {
 		Phase3FakeEquippedStartingRelicIds = {},
 		ProgressionVerbose = false,
 		-- Lobby RelicProfileService session seed (Studio). nil = empty profile on join.
-		RelicProfileTestSeed = nil,
+		RelicProfileTestSeed = {
+			blueprintProgress = { needle_edge = 1 },
+			ownedRelics = {},
+			materials = {},
+		},
 	},
 }

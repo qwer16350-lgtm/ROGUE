@@ -50,6 +50,11 @@ local function startStageBranch()
 	Players.CharacterAutoLoads = false
 
 	local GameConfig = require(Shared:WaitForChild("GameConfig"))
+	local RelicProfileService = require(ServerScriptService:WaitForChild("RelicProfileService"))
+	local RelicProfilePersistence = require(ServerScriptService:WaitForChild("RelicProfilePersistence"))
+	RelicProfilePersistence.init(GameConfig, {
+		getDefaultProfile = RelicProfileService.getDefaultProfile,
+	})
 	local EnemyService = require(script.Parent:WaitForChild("EnemyService"))
 	local WaveService = require(script.Parent:WaitForChild("WaveService"))
 	local CombatService = require(script.Parent:WaitForChild("CombatService"))

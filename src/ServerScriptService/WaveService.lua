@@ -4,6 +4,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local StageData = require(Shared:WaitForChild("StageData"))
 local SpawnRules = require(Shared:WaitForChild("SpawnRules"))
 local RunConstants = require(Shared:WaitForChild("Run"):WaitForChild("RunConstants"))
+local RunResultRewardPolicy = require(Shared:WaitForChild("RunResultRewardPolicy"))
+local RelicProfilePersistence = require(script.Parent:WaitForChild("RelicProfilePersistence"))
 
 local WaveService = {}
 
@@ -177,6 +179,29 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 			local prog = progressionService.getHudProgress(p)
 			local ups = progressionService.getUpgradeCounts(p)
 
+			local grant = RunResultRewardPolicy.compute({
+				outcome = outcome,
+				floor = floorIdx,
+				isLastFloor = isLastFloor,
+				cleared = cleared,
+				killCount = sess.killCount,
+				survivalSeconds = survivalSeconds,
+			}, gameConfig)
+			local materialsGranted = grant.materialsGranted
+			local applied, grantErr = RelicProfilePersistence.grantMaterials(p.UserId, materialsGranted)
+			local rewardSummary = {
+				applied = applied,
+				materialsGranted = materialsGranted,
+			}
+			if not applied then
+				rewardSummary.grantError = grantErr
+				warn(string.format(
+					"[WaveService] result grant failed uid=%d err=%s",
+					p.UserId,
+					tostring(grantErr)
+				))
+			end
+
 			resultEvent:FireClient(p, {
 				SurvivalSeconds = survivalSeconds,
 				KillCount       = sess.killCount,
@@ -188,6 +213,7 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 				MaxFloor        = maxFloor,
 				IsLastFloor     = isLastFloor,
 				Outcome         = outcome,
+				RewardSummary   = rewardSummary,
 			})
 		end
 

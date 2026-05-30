@@ -67,6 +67,28 @@ function ResultClient.init()
 		pad.PaddingRight = UDim.new(0, 16)
 		pad.Parent = frame
 
+
+		local function formatMaterialsGranted(summary)
+			if type(summary) ~= "table" then
+				return "(없음)"
+			end
+			local granted = summary.materialsGranted
+			if type(granted) ~= "table" then
+				return "(없음)"
+			end
+			local lines = {}
+			for _, key in ipairs({ "shard", "ancient_shard", "ceremonial_coin" }) do
+				local amt = granted[key]
+				if type(amt) == "number" and amt > 0 then
+					table.insert(lines, string.format("%s +%d", key, amt))
+				end
+			end
+			if #lines == 0 then
+				return "(없음)"
+			end
+			return table.concat(lines, ", ")
+		end
+
 		local function line(text, order, size)
 			local label = Instance.new("TextLabel")
 			label.LayoutOrder = order
@@ -93,6 +115,13 @@ function ResultClient.init()
 		end
 		local upsStr = #upsLines > 0 and table.concat(upsLines, "\n") or "(없음)"
 		line("획득 업그레이드:\n" .. upsStr, 5, 72)
+
+		local rewardSummary = data.RewardSummary
+		local rewardStr = formatMaterialsGranted(rewardSummary)
+		if type(rewardSummary) == "table" and rewardSummary.applied == false then
+			rewardStr = rewardStr .. " (저장 실패)"
+		end
+		line("획득 재료: " .. rewardStr, 55, 28)
 
 		local bossStr = (data.BossKilled == true) and "예" or "아니오"
 		line("보스 처치: " .. bossStr, 6)

@@ -1,14 +1,21 @@
--- Lobby session relic profile (Step 4B). Craft (4C-1) + Equip (4C-2). DataStore in Step 5.
+-- Lobby relic profile (4B-4C-2) + DataStore persistence (5A).
 -- Stage chest still uses GameConfig.Debug until Step 7.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local RelicDefinitions = require(Shared:WaitForChild("RelicDefinitions"))
+local RelicProfilePersistence = require(script.Parent:WaitForChild("RelicProfilePersistence"))
 
 local RelicProfileService = {}
 
-local profilesByUserId: { [number]: any } = {}
+local sessionsByUserId: { [number]: {
+	profile: any?,
+	loadState: "loading" | "ready",
+	dirty: boolean,
+	persistDisabled: boolean,
+	equipSaveThread: thread?,
+} } = {}
 local gameConfigRef: any = nil
 local getRelicProfileRemote: RemoteFunction? = nil
 local craftRelicRequestRemote: RemoteFunction? = nil
@@ -139,19 +146,159 @@ local function applyTestSeed(profile: any)
 	end
 end
 
+local function getPersistenceCfg(): any
+	return gameConfigRef and gameConfigRef.RelicProfilePersistence
+end
+
+local function getEquipSaveDebounceSeconds(): number
+	local cfg = getPersistenceCfg()
+	local sec = type(cfg) == "table" and cfg.EquipSaveDebounceSeconds
+	if type(sec) == "number" and sec > 0 then
+		return sec
+	end
+	return 5
+end
+
+local function getAutosaveIntervalSeconds(): number
+	local cfg = getPersistenceCfg()
+	local sec = type(cfg) == "table" and cfg.AutosaveIntervalSeconds
+	if type(sec) == "number" and sec > 0 then
+		return sec
+	end
+	return 60
+end
+
+local function getSession(uid: number): any?
+	return sessionsByUserId[uid]
+end
+
+local function isProfileLoading(player: Player): boolean
+	local meta = getSession(player.UserId)
+	return meta ~= nil and meta.loadState == "loading"
+end
+
+local function sessionProfileReady(player: Player): any?
+	local meta = getSession(player.UserId)
+	if not meta or meta.loadState ~= "ready" or type(meta.profile) ~= "table" then
+		return nil
+	end
+	return meta.profile
+end
+
 local function ensureProfile(player: Player): any?
 	if typeof(player) ~= "Instance" or not player:IsA("Player") then
 		return nil
 	end
-	local uid = player.UserId
-	local existing = profilesByUserId[uid]
-	if existing ~= nil then
-		return existing
+	return sessionProfileReady(player)
+end
+
+local function tryImmediateSave(player: Player, profile: any)
+	local meta = getSession(player.UserId)
+	if not meta or meta.persistDisabled or not RelicProfilePersistence.isEnabled() then
+		return
 	end
-	local profile = RelicProfileService.getDefaultProfile()
-	applyTestSeed(profile)
-	profilesByUserId[uid] = profile
-	return profile
+	local ok, err = RelicProfilePersistence.saveProfile(player.UserId, profile)
+	if ok then
+		meta.dirty = false
+	else
+		meta.dirty = true
+		warn(string.format("[RelicProfileService] craft save failed uid=%d err=%s", player.UserId, tostring(err)))
+	end
+end
+
+local function flushDirtySave(player: Player): boolean
+	local meta = getSession(player.UserId)
+	if not meta or meta.persistDisabled or not meta.dirty or not RelicProfilePersistence.isEnabled() then
+		return false
+	end
+	if type(meta.profile) ~= "table" then
+		return false
+	end
+	local ok, err = RelicProfilePersistence.saveProfile(player.UserId, meta.profile)
+	if ok then
+		meta.dirty = false
+		return true
+	end
+	warn(string.format("[RelicProfileService] save failed uid=%d err=%s", player.UserId, tostring(err)))
+	return false
+end
+
+local function cancelEquipSaveThread(meta: any)
+	if meta and meta.equipSaveThread then
+		local t = meta.equipSaveThread
+		meta.equipSaveThread = nil
+		pcall(function()
+			task.cancel(t)
+		end)
+	end
+end
+
+local function scheduleEquipDebouncedSave(player: Player)
+	local meta = getSession(player.UserId)
+	if not meta or meta.persistDisabled or not RelicProfilePersistence.isEnabled() then
+		return
+	end
+	cancelEquipSaveThread(meta)
+	local debounce = getEquipSaveDebounceSeconds()
+	meta.equipSaveThread = task.delay(debounce, function()
+		meta.equipSaveThread = nil
+		if meta.dirty then
+			flushDirtySave(player)
+		end
+	end)
+end
+
+local function markDirty(player: Player)
+	local meta = getSession(player.UserId)
+	if meta then
+		meta.dirty = true
+	end
+end
+
+local function beginProfileLoad(player: Player)
+	local uid = player.UserId
+	if getSession(uid) ~= nil then
+		return
+	end
+	sessionsByUserId[uid] = {
+		profile = nil,
+		loadState = "loading",
+		dirty = false,
+		persistDisabled = false,
+		equipSaveThread = nil,
+	}
+	task.spawn(function()
+		local meta = getSession(uid)
+		if not meta then
+			return
+		end
+		if not RelicProfilePersistence.isEnabled() then
+			local profile = RelicProfileService.getDefaultProfile()
+			applyTestSeed(profile)
+			meta.profile = profile
+			meta.loadState = "ready"
+			meta.persistDisabled = true
+			return
+		end
+		local loaded, err = RelicProfilePersistence.loadProfile(uid)
+		meta = getSession(uid)
+		if not meta then
+			return
+		end
+		if loaded then
+			applyTestSeed(loaded)
+			meta.profile = loaded
+			meta.loadState = "ready"
+			meta.persistDisabled = false
+		else
+			warn(string.format("[RelicProfileService] load failed uid=%d err=%s session-only", uid, tostring(err)))
+			local profile = RelicProfileService.getDefaultProfile()
+			applyTestSeed(profile)
+			meta.profile = profile
+			meta.loadState = "ready"
+			meta.persistDisabled = true
+		end
+	end)
 end
 
 function RelicProfileService.getProfile(player: Player): any?
@@ -240,6 +387,9 @@ local function deductCraftMaterials(profile: any, def: any)
 end
 
 function RelicProfileService.craftRelic(player: Player, relicId: any): any
+	if isProfileLoading(player) then
+		return { ok = false, reason = "PROFILE_LOADING" }
+	end
 	if type(relicId) ~= "string" or relicId == "" then
 		return { ok = false, reason = "INVALID_RELIC_ID" }
 	end
@@ -257,6 +407,7 @@ function RelicProfileService.craftRelic(player: Player, relicId: any): any
 	end
 	deductCraftMaterials(profile, def)
 	profile.ownedRelics[relicId] = true
+	tryImmediateSave(player, profile)
 	return {
 		ok = true,
 		relicId = relicId,
@@ -299,6 +450,9 @@ function RelicProfileService.canEquipStartingRelics(profile: any, relicIds: any)
 end
 
 function RelicProfileService.setEquippedStartingRelics(player: Player, relicIds: any): any
+	if isProfileLoading(player) then
+		return { ok = false, reason = "PROFILE_LOADING" }
+	end
 	local profile = ensureProfile(player)
 	if not profile then
 		return { ok = false, reason = "PROFILE_UNAVAILABLE" }
@@ -309,6 +463,8 @@ function RelicProfileService.setEquippedStartingRelics(player: Player, relicIds:
 	end
 	local equippedCopy = copyEquippedStartingRelics(relicIds)
 	profile.equippedStartingRelics = equippedCopy
+	markDirty(player)
+	scheduleEquipDebouncedSave(player)
 	return {
 		ok = true,
 		equippedStartingRelics = copyEquippedStartingRelics(equippedCopy),
@@ -404,6 +560,9 @@ function RelicProfileService.buildStartingEligibleRelics(profile: any): { any }
 end
 
 function RelicProfileService.getPublicProfile(player: Player): any
+	if isProfileLoading(player) then
+		return { ok = false, reason = "PROFILE_LOADING" }
+	end
 	local profile = ensureProfile(player)
 	if not profile then
 		return { ok = false, reason = "PROFILE_UNAVAILABLE" }
@@ -425,7 +584,21 @@ function RelicProfileService.cleanup(player: Player)
 	if typeof(player) ~= "Instance" or not player:IsA("Player") then
 		return
 	end
-	profilesByUserId[player.UserId] = nil
+	local uid = player.UserId
+	local meta = getSession(uid)
+	if meta then
+		cancelEquipSaveThread(meta)
+	end
+	sessionsByUserId[uid] = nil
+end
+
+local function onPlayerRemoving(player: Player)
+	local meta = getSession(player.UserId)
+	if meta and meta.loadState == "ready" then
+		cancelEquipSaveThread(meta)
+		flushDirtySave(player)
+	end
+	RelicProfileService.cleanup(player)
 end
 
 local function onGetRelicProfile(player: Player): any
@@ -496,17 +669,32 @@ function RelicProfileService.init(deps: {
 	equipStartingRelicsRequestRemote = ensureEquipStartingRelicsRequestRemote(deps.replicatedStorage)
 	equipStartingRelicsRequestRemote.OnServerInvoke = onEquipStartingRelicsRequest
 
+	RelicProfilePersistence.init(deps.gameConfig, {
+		getDefaultProfile = RelicProfileService.getDefaultProfile,
+	})
+
 	deps.players.PlayerAdded:Connect(function(player)
-		ensureProfile(player)
+		beginProfileLoad(player)
 	end)
 
-	deps.players.PlayerRemoving:Connect(function(player)
-		RelicProfileService.cleanup(player)
-	end)
+	deps.players.PlayerRemoving:Connect(onPlayerRemoving)
 
 	for _, player in deps.players:GetPlayers() do
-		ensureProfile(player)
+		beginProfileLoad(player)
 	end
+
+	task.spawn(function()
+		local interval = getAutosaveIntervalSeconds()
+		while true do
+			task.wait(interval)
+			for _, player in deps.players:GetPlayers() do
+				local meta = getSession(player.UserId)
+				if meta and meta.loadState == "ready" and meta.dirty then
+					flushDirtySave(player)
+				end
+			end
+		end
+	end)
 end
 
 return RelicProfileService

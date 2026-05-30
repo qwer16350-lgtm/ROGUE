@@ -103,7 +103,7 @@
 
 ### 4.1 계정 프로필 (`PlayerRelicProfile`)
 
-DataStore 대상. **아직 미구현.**
+DataStore 대상. **5A:** store `PlayerRelicProfile`, key `tostring(userId)`, payload `version = 1`.
 
 ```lua
 playerRelicProfile = {
@@ -309,7 +309,9 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 | **4B** | `RelicProfileService` 세션 stub + `GetRelicProfile` | Lobby ✓ (§13.9) |
 | **4C-1** | `CraftRelicRequest` 세션 craft (materials 차감, blueprint 유지) | Lobby ✓ (§13.10) |
 | **4C-2** | `EquipStartingRelicsRequest` 세션 equip (`{}` 해제 포함) | Lobby ✓ (§13.11) |
-| **5** | **DataStore** `PlayerRelicProfile` | 신규 서비스 |
+| **5A** | **DataStore** `PlayerRelicProfile` foundation | `RelicProfilePersistence` + `RelicProfileService` |
+| **5B** | Result material grant (RewardBudget) | WaveService |
+| **5C** | Phase3RelicChest real `ownedRelics` | ProgressionService |
 | **6** | **Result** blueprint/material 지급 + UI 요약 | WaveService, ResultClient |
 | **7** | Starting = **ownedRelics + slot cap**; RelicData migration은 **별도 PLAN** | Lobby, Teleport, Progression |
 
@@ -351,6 +353,8 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 | 2026-05-27 | **Step 4A:** Lobby GetRelicProfile / Craft / Equip API 스펙 · RelicProfileService · UI 연결 · 4B/4C 후보 (docs only) |
 | 2026-05-27 | **Step 4B:** `RelicProfileService` 세션 stub · `GetRelicProfile` · `GameConfig.RelicStartingSlotMax` · Lobby `MainServer` wiring (§13.9) |
 | 2026-05-27 | **Step 4C-1:** `CraftRelicRequest` 세션 craft · materials 차감 · blueprint 유지 · 성공 시 `profile` 스냅샷 (§13.10) |
+| 2026-05-29 | **Step 5B:** Run result material grant · RunResultRewardPolicy · Persistence.grantMaterials · SessionResult.RewardSummary |
+| 2026-05-27 | **Step 5A:** RelicProfilePersistence DataStore foundation (§13.12) |
 | 2026-05-27 | **Step 4C-2:** `EquipStartingRelicsRequest` 세션 equip · `{}` 해제 · 7종 non-empty `NOT_STARTING_ELIGIBLE` (§13.11) |
 
 ---
@@ -371,7 +375,7 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 
 ## 13. Lobby Relic Profile / Craft / Equip API
 
-**상태:** **4B** ✓ · **4C-1** Craft ✓ · **4C-2** Equip ✓ · DataStore·UI·Stage(Teleport/Starting)는 Step 5/7.
+**상태:** **4B** ✓ · **4C-1** Craft ✓ · **4C-2** Equip ✓ · **5A** persistence ✓ · **5B** result materials ✓ · **5C**·UI·Stage(Teleport/Starting)는 후속.
 
 **Place 경계:** Lobby Place에서 프로필 API 사용. Stage Place는 Step 3까지 `GameConfig.Debug` chest filter + `startingRelicId` Teleport만. Lobby `ownedRelics`가 Stage chest에 반영되려면 **Step 5~7** (DataStore · Teleport payload).
 
@@ -389,6 +393,27 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 |------|------|
 | `GetRelicDefinitionSummary` | 클라 캐시용 id/label/craft 메타 일괄 — UI 연동 시 |
 | `UnequipStartingRelicRequest` | 단일 해제 — `EquipStartingRelicsRequest`가 배열 교체로 대체 가능 |
+
+
+### 13.12 Step 5A — DataStore foundation
+
+| 항목 | 정책 |
+|------|------|
+| Store name | **PlayerRelicProfile** (document version field) |
+| Craft save | immediate SetAsync on success |
+| Equip save | markDirty + debounce + autosave + PlayerRemoving flush |
+| Load gate | PROFILE_LOADING |
+| Modules | RelicProfilePersistence.lua, RelicProfileService.lua |
+
+### 13.13 Step 5B — Result material grant (placeholder)
+
+| 항목 | 정책 |
+|------|------|
+| Pipeline | WaveService.finishSession → RunResultRewardPolicy → RelicProfilePersistence.grantMaterials |
+| Grant | **materials only** (Option C); no blueprint from Result |
+| Save | immediate save (5A SetAsync) |
+| UI payload | RewardSummary: applied, materialsGranted (no materialsAfter) |
+| Config | GameConfig.RunResultReward + RelicProfilePersistence.Enabled |
 
 **Remotes 위치:** `ReplicatedStorage.Remotes` (기존 `StartingRelicSelectRequest`와 동일 패턴). Step 4B에서 서버가 `FindFirstChild` 또는 생성.
 
