@@ -3,9 +3,12 @@
 이 문서는 **Phase 2 MVP**가 실플레이 기준으로 마감된 상태를 기록하고, **임시·테스트 구조를 정식 설계로 오해하지 않도록** 명시한다.  
 작성 시점 기준: 레포 `src/` 및 확인된 런타임 동작에 따른 클로저 문서이며, 본 문서만으로 게임 규칙이 변경되지 않는다.
 
+> **Historical snapshot (Phase 2 MVP closure, pre–Phase 3 meta).**  
+> **현재 SSOT:** `docs/PHASE3_MVP_CURRENT_ARCHITECTURE.md` §1.1 · `docs/PHASE3_RELIC_META_PROGRESSION.md` §0.
+
 ---
 
-## 1. Phase 2 MVP Closure Summary
+## 1. Phase 2 MVP Closure Summary (historical)
 
 아래 항목은 **Phase 2 MVP 범위에서 완료 처리**한다.
 
@@ -33,7 +36,7 @@
 
 ---
 
-## 2. Confirmed Runtime Behavior
+## 2. Confirmed Runtime Behavior (historical - superseded by Phase 3) (historical — superseded by Phase 3)
 
 아래는 **사용자 실플레이로 정상 작동을 확인한 항목**으로 기록한다.
 

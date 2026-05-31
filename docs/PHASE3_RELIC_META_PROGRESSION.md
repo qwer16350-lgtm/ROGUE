@@ -7,10 +7,30 @@
 | 문서 경로 | `docs/PHASE3_RELIC_META_PROGRESSION.md` |
 | 런타임 정본 (현재 MVP) | `docs/PHASE3_MVP_CURRENT_ARCHITECTURE.md` |
 | Choice / pending | `docs/CHOICE_FLOW_CURRENT_AND_PHASE3_PLAN.md` |
-| **이 문서만으로 게임 동작이 바뀌지 않는다** | 설계·용어·단계만 |
+| **이 문서만으로 게임 동작이 바뀌지 않는다** | 설계·용어·단계·구현 로그 |
 
-**상태:** 설계 확정 (문서). DataStore · UI · Result 지급 · chest Owned 필터 **미구현** (구현 단계는 §9).
+**Phase 3 Meta Progression — core: COMPLETE (2026-05 closeout).** 검증: 개발 중 실플레이.
 
+
+---
+
+## 0. Phase 3 Closeout SSOT (runtime)
+
+| Layer | SSOT |
+|-------|------|
+| Relic 정의·전투 modifier | `RelicDefinitions` + `RelicModifierApplicator` |
+| 계정 프로필 | `RelicProfilePersistence` / `RelicProfileService` |
+| Lobby 장착 | `EquipStartingRelicsRequest` → `equippedStartingRelics` |
+| Cross-place | `equippedStartingRelicIds` → `RunContext` → `phase3ActiveRelicIds` |
+| Run chest 후보 | `ownedRelics` − `equippedStartingRelics` − `phase3ActiveRelicIds` (+ `isRunChestEligible`) |
+| Result (구현) | materials placeholder (5B) |
+| Result (미구현) | blueprint discovery |
+| Class | detection baseline only; effects 미구현 |
+| Removed (7C-3) | `RelicData.lua`, `startingRelicId`, `StartingRelicSelectRequest`, `getStartingRelicId` |
+| `cracked_sword_tip` | retired — Phase 4+ redesign |
+| Obsolete | `ShowLobbyRelicFusionCraftDev`, `ShowLobbyRelicMaterialsDevLabel` (§13.15) |
+
+**Phase 4+ backlog:** → §14.
 ---
 
 ## 1. 최종 Relic 구조
@@ -51,7 +71,7 @@
 [메타]     Run → blueprint / material / shard (+ boss)
 [Lobby]    Craft → ownedRelics · equip → equippedStartingRelics
 [Stage]    Start(active from equipped) + Chest(active more from Owned \ equipped)
-[Result]   blueprint/material 지급 요약 (ownedRelics 변경 없음, 예외 태그만 direct relic)
+[Result]   materials 지급 요약 (placeholder 5B); blueprint from Result **미구현**
 ```
 
 ---
@@ -72,15 +92,18 @@
 
 ## 3. 기존 구조와 달라지는 점
 
-### 3.1 현재 MVP 코드 (2026-05 기준)
+### 3.1 구현 완료 코드 (2026-05 closeout)
 
 | 항목 | 현재 |
 |------|------|
-| `Phase3RelicPool` | 무기별 **정적 7종** 합집합 + `activeWeapons` + round-robin |
-| `addPhase3Relic` | `RelicDefinitions` 존재·중복만 검사 — **Owned 검사 없음** |
-| `startingRelicId` | Lobby `RelicData` **1종** → Teleport |
-| `SessionResult` | relic / blueprint / material **미포함** |
-| 영구 프로필 | **없음** (Stage `progressByPlayer` 메모리만) |
+| 항목 | 상태 |
+|------|------|
+| `Phase3RelicPool` | pool + filters (owned - equipped - active) + round-robin |
+| `ProgressionService` | `phase3ActiveRelicIds`; chest owned from profile (5C) |
+| Lobby profile | `RelicProfileService` + DataStore (5A) |
+| Starting | `EquipStartingRelicsRequest` -> Teleport -> phase3 seed (7B) |
+| `SessionResult` | `RewardSummary.materialsGranted` only (5B placeholder) |
+| Legacy | RelicData / startingRelicId / StartingRelicSelectRequest - **removed (7C-3)** |
 
 ### 3.2 목표 설계와의 차이 (명시)
 
@@ -89,8 +112,8 @@
 | **Phase3RelicChest** | 새 relic **영구 획득** 장소 | 이미 **Owned**인 relic 중 **이번 런 추가 활성화** |
 | **Chest 선택** | `ownedRelics` 추가 | **`phase3ActiveRelicIds`만** 변경 |
 | **영구 성장** | chest / `phase3ActiveRelicIds` | **blueprint / material / Lobby craft** |
-| **Result** | `phase3ActiveRelicIds` → unlock | **blueprintProgress / materials** 지급·표시 |
-| **StartingRelic** | RelicData와 무관한 별도 유물군 (장기) | **Owned의 장착 슬롯** |
+| **Result** | materials 지급 (5B); blueprint discovery **미구현** |
+| **StartingRelic** | 별도 유물군이 아님 | **Owned의 장착 슬롯** (`equippedStartingRelics`) |
 
 ### 3.3 이전 메타 PLAN 초안과의 차이
 
@@ -147,14 +170,14 @@ playerRelicProfile = {
 |------|------|
 | `equippedStartingRelics` | Teleport payload → 런 시작 시 `phase3ActiveRelicIds`에 **시드** |
 | `phase3ActiveRelicIds` | Starting + Chest 선택으로 **런 중 활성** (applicator / BuildTag) |
-| `startingRelicId` (현행) | **과도기:** 슬롯 1개일 때 단일 장착 미러; Step 7에서 배열로 대체 |
+| `startingRelicId` | **removed (7C-3)** — see §6 Historical |
 
 ### 4.4 직접 relic grant 예외 (`obtainTags` 설계)
 
 | 태그 | 용도 |
 |------|------|
 | `Crafted` | Lobby craft → `ownedRelics` (정규 경로) |
-| `Starter` / newbie | 뉴비 기본 Owned (과도기 RelicData 3종) |
+| `Starter` / newbie | Phase 4+ (RelicShop / direct grant) |
 | `Shop` / `Event` | 상점·이벤트 direct |
 | `RankReward` | 랭크 보상 direct |
 
@@ -206,29 +229,23 @@ RunRelicChestPool(player, activeWeapons) =
 - **`ownedRelics` 중 일부**를 런 시작 시 들고 가는 **제한 슬롯**이다.
 - `equippedStartingRelics`에 포함된 relic은 **해당 런의 RunRelicChestPool에서 제외** (이중 적용 방지).
 
-### 6.2 과도기 (현재 코드)
+### 6.2 현행 (closeout)
 
-| 항목 | 현재 |
+| 항목 | 구현 |
 |------|------|
-| Lobby | `RelicData.lua` 3종 — `old_shield_emblem`, `cracked_sword_tip`, `knights_belt` |
-| 전달 | `startingRelicId` **1개** — `LobbyBootstrap` → Teleport → `RunContext` |
-| 전투 | `RelicData.getCombatMultipliers(startingRelicId)` (SS SwordShield 가중) |
-| Phase3 | `RelicDefinitions` 7종 pool — **Owned 필터 없음** (갭) |
+| Lobby UI | StartingRelicPanel + EquipStartingRelicsRequest |
+| Teleport | equippedStartingRelicIds only |
+| Stage | phase3ActiveRelicIds seed + Applicator |
+| Chest | owned - equipped - active (§5) |
 
-**정책:** **RelicData 즉시 삭제 금지.** RelicDefinitions로의 **통합은 Step 7 이후 별도 migration PLAN**.
+### 6.3 Historical — RelicData era (pre-7C-3)
 
-### 6.3 목표
-
-| 항목 | 목표 |
-|------|------|
-| 장착 | `equippedStartingRelics` ≤ `RelicStartingSlotMax` |
-| 검증 | 장착 id ∈ `ownedRelics` |
-| Chest | 장착분 제외 (§5) |
-| RelicData | `isStartingEligible` relic만 장착 후보 (Definitions 메타 또는 RelicData 병행) |
-
-### 6.4 migration 시점
-
-**DataStore + Craft + Owned 기반 Chest filter(Step 3~5) 안정화 후** — Starting 슬롯 전환(Step 7). 그 전에 RelicDefinitions 일괄 통합 **하지 않음**.
+| 항목 | 과거 (removed) |
+|------|----------------|
+| Lobby | RelicData.lua 3종 |
+| 전달 | startingRelicId |
+| Remote | StartingRelicSelectRequest |
+| 전투 | RelicData.getCombatMultipliers (superseded 7C-2+) |
 
 ---
 
@@ -239,7 +256,8 @@ RunRelicChestPool(player, activeWeapons) =
 | 항목 | 정책 |
 |------|------|
 | **Result → `ownedRelics`** | **변경하지 않음** (craft는 Lobby만) |
-| **Result 지급** | `blueprintProgress`, `materials` (shard 등), boss material |
+| **Result 지급 (구현)** | `materials` only — RunResultRewardPolicy placeholder (5B) |
+| **Result 지급 (미구현)** | blueprint discovery (Phase 4+) |
 | **Result UI** | 지급량·진행도 **요약 표시** (구현 Step 6) |
 | **`phase3ActiveRelicIds`** | **이번 런 활성 목록** 참고·표시 가능; **영구 unlock 목록 아님** |
 
@@ -313,7 +331,11 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 | **5B** | Result material grant (RewardBudget) | WaveService |
 | **5C** | Phase3RelicChest real `ownedRelics` | ProgressionService |
 | **6** | **Result** blueprint/material 지급 + UI 요약 | WaveService, ResultClient |
-| **7** | Starting = **ownedRelics + slot cap**; RelicData migration은 **별도 PLAN** | Lobby, Teleport, Progression |
+| **7A** | Lobby StartingRelicPanel owned loadout | ✓ §13.17 |
+| **7B** | Teleport equipped → RunContext → phase3 seed + chest exclude | ✓ §13.18 |
+| **7C-1** | RelicDefinitions migrate 2종 + `cracked_sword_tip` retire | ✓ §13.19 |
+| **7C-2** | RelicData runtime 제거 (combat/offer/HUD) | ✓ §13.20 |
+| **7C-3** | RelicData.lua·Teleport `startingRelicId`·Remote 삭제 | ✓ §13.21 |
 
 ---
 
@@ -322,8 +344,8 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 - Phase3RelicChest에 **미소유( Locked ) relic** 등장  
 - Chest 선택을 **`ownedRelics` 영구 unlock**으로 처리  
 - StartingRelic을 **별도 유물군**으로 신규 정의 (장기적으로 슬롯만)  
-- **RelicData 즉시 삭제** · **RelicDefinitions 즉시 통합**  
-- 본 설계 단계에서 **DataStore / UI / Result 구현** (별도 승인)  
+
+
 - **Class effect** 구현  
 - reward **수치 확정** (테이블은 placeholder)
 
@@ -338,7 +360,8 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 | 정적 pool | `src/ReplicatedStorage/Shared/Phase3RelicPool.lua` |
 | 런 state | `src/ServerScriptService/ProgressionService.lua` |
 | Lobby relic profile (4B) | `src/ServerScriptService/RelicProfileService.lua` |
-| Starting (과도기) | `src/ReplicatedStorage/Shared/RelicData.lua` |
+| Lobby profile | `src/ServerScriptService/RelicProfileService.lua` |
+| Persistence | `src/ServerScriptService/RelicProfilePersistence.lua` |
 | Chest drop | `src/ServerScriptService/CombatService.lua` |
 
 ---
@@ -355,7 +378,7 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 | 2026-05-27 | **Step 4C-1:** `CraftRelicRequest` 세션 craft · materials 차감 · blueprint 유지 · 성공 시 `profile` 스냅샷 (§13.10) |
 | 2026-05-29 | **Step 5B:** Run result material grant · RunResultRewardPolicy · Persistence.grantMaterials · SessionResult.RewardSummary |
 | 2026-05-27 | **Step 5A:** RelicProfilePersistence DataStore foundation (§13.12) |
-| 2026-05-27 | **Step 4C-2:** `EquipStartingRelicsRequest` 세션 equip · `{}` 해제 · 7종 non-empty `NOT_STARTING_ELIGIBLE` (§13.11) |
+| 2026-05-31 | **Closeout:** docs sync — §0 · §14 · historical labels |`n| 2026-05-27 | **Step 4C-2:** `EquipStartingRelicsRequest` 세션 equip · `{}` 해제 · 7종 non-empty `NOT_STARTING_ELIGIBLE` (§13.11) |
 
 ---
 
@@ -366,7 +389,8 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 | `Phase3FakeOwnedRelicIds` | **`nil`** (기본) | legacy — activeWeapons static pool 전부 owned로 간주 |
 | | `{}` | owned 없음 → Chest 미스폰 |
 | | `{ "needle_edge", … }` | 해당 id만 Owned ∩ 후보 |
-| `Phase3FakeEquippedStartingRelicIds` | `{}` (기본) | listed id는 chest에서 제외 (`startingRelicId`와 **무관**) |
+| `Phase3FakeEquippedStartingRelicIds` | **`nil` / `{}`** | RunContext `equippedStartingRelicIds`로 chest 제외 (7B SSOT) |
+| | **non-empty array** | Debug **chest exclude override** (RunContext 무시). **phase3 시드는 RunContext만** |
 | `Phase3TestRelicIds` | (기존) | `phase3ActiveRelicIds` **런 시드** — fake owned와 별개 |
 
 **API:** `ProgressionService.buildPhase3RelicOfferFilters` → `Phase3RelicPool.buildOfferChoicesForWeapons(weaponIds, filters, maxCount)`. `CombatService` 드랍 게이트 → `hasPhase3RelicChestOfferAvailable`.
@@ -375,9 +399,9 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 
 ## 13. Lobby Relic Profile / Craft / Equip API
 
-**상태:** **4B** ✓ · **4C-1** Craft ✓ · **4C-2** Equip ✓ · **5A** persistence ✓ · **5B** result materials ✓ · **5C**·UI·Stage(Teleport/Starting)는 후속.
+**상태 (closeout):** 4B–5B ✓ · 5C · Step 6 UI ✓ · 7A–7C ✓ · legacy removed (7C-3).
 
-**Place 경계:** Lobby Place에서 프로필 API 사용. Stage Place는 Step 3까지 `GameConfig.Debug` chest filter + `startingRelicId` Teleport만. Lobby `ownedRelics`가 Stage chest에 반영되려면 **Step 5~7** (DataStore · Teleport payload).
+**Place 경계:** Lobby 프로필 API + **7B** `equippedStartingRelicIds` Teleport → RunContext → `phase3ActiveRelicIds` 시드 + chest equipped 제외. `startingRelicId` / `StartingRelicSelectRequest` **removed** (historical §13.6).
 
 ### 13.1 Remote 목록
 
@@ -415,7 +439,7 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 | UI payload | RewardSummary: applied, materialsGranted (no materialsAfter) |
 | Config | GameConfig.RunResultReward + RelicProfilePersistence.Enabled |
 
-**Remotes 위치:** `ReplicatedStorage.Remotes` (기존 `StartingRelicSelectRequest`와 동일 패턴). Step 4B에서 서버가 `FindFirstChild` 또는 생성.
+**Remotes 위치:** `ReplicatedStorage.Remotes`. (`StartingRelicSelectRequest` **removed** - historical section 13.6.)
 
 ---
 
@@ -571,11 +595,12 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 | 4 | 항목이 non-empty string 아님 | `INVALID_RELIC_ID` |
 | 5 | `RelicDefinitions.getDefinition(relicId)` 없음 | `UNKNOWN_RELIC` |
 | 6 | `ownedRelics[relicId] ~= true` | `NOT_OWNED` |
-| 7 | `def.isStartingEligible ~= true` | `NOT_STARTING_ELIGIBLE` |
 
 **성공 시 (4C-2 SSOT):** `profile.equippedStartingRelics` = `copyEquippedStartingRelics(relicIds)`. 응답에 `profile` 포함 (Option B).
 
-**빈 배열 `{}`:** 전부 해제 — **성공** (현재 7종 `isStartingEligible=false`라 non-empty는 `NOT_STARTING_ELIGIBLE`).
+**빈 배열 `{}`:** 전부 해제 — **성공**.
+
+**Step 7A 정책 (2026-05-31):** `isStartingEligible`는 Equip 게이트에 **사용하지 않음**. owned + slot cap만 검증. Run chest pool = `ownedRelics` − `equippedStartingRelics` − `phase3ActiveRelicIds` (7B).
 
 **저장:** 세션 메모리 only. **Teleport / RunContext / Stage 미연결** (§13.6).
 
@@ -611,29 +636,29 @@ Result 또는 메타 시스템에서 **relic 완성품** 직접 지급:
 
 ---
 
-### 13.6 StartingRelic 과도기 정책 (Step 4A — 유지)
+### 13.6 Historical — StartingRelic policy snapshot (pre-7C-3, do not implement)
 
 | 항목 | Step 4A | Step 7 |
 |------|---------|--------|
 | `StartingRelicSelectRequest` (RemoteEvent) | **유지** | 검토 |
-| `RelicData` 3종 (`old_shield_emblem`, …) | **유지** | migration PLAN |
+| `RelicData` 3종 | **7C-1:** 2종 Definitions 이관 · `cracked_sword_tip` retire | **7C-2:** 모듈 제거 |
 | `LobbyBootstrap.selectedStartingRelicByPlayer` | **유지** | → profile 연동 |
 | `Teleport` / `RunContext.startingRelicId` | **유지** | `equippedStartingRelics[]` payload |
 | `EquipStartingRelicsRequest` | **4C-2 구현** (Lobby 세션) | Step 7: 런 시드 + chest 제외 SSOT |
 | `RelicData` vs `RelicDefinitions` id | **분리 유지** — Equip API는 Definitions id만 |
 
-**명시:** `equippedStartingRelics`는 Lobby 프로필 필드로만 존재하며, **이번 단계에서 런 시작 활성화에 쓰이지 않는다.** 런 시작은 계속 `startingRelicId` + `RelicData` multipliers.
+**7B (historical note):** equipped → phase3 seed + chest exclude. Pre-7C-3 also had `startingRelicId` + RelicData (removed).
 
 ---
 
-### 13.7 Lobby UI 연결 계획 (구현 없음)
+### 13.7 Lobby UI (구현 완료 — Step 6·7A)
 
 | 패널 | API | 표시·동작 |
 |------|-----|-----------|
 | **ArtifactCollectionPanel** | `GetRelicProfile` | owned / locked(클라 파생) / `blueprintProgress` |
 | **RelicFusionPanel** | `CraftRelicRequest` | `craftableRelics` + 제작 버튼 |
 | **InventoryPanel** | `GetRelicProfile.materials` | shard 등 |
-| **StartingRelicPanel** | **현행** `StartingRelicSelectRequest` | RelicData 버튼; **장기** `EquipStartingRelicsRequest` |
+| **StartingRelicPanel** | `EquipStartingRelicsRequest` | `LobbyRelicStartingPanelClient` (historical: RelicData buttons removed) |
 | **RelicShopPanel** | (후속) direct grant | Step 4A 제외 |
 
 **클라 흐름 (미래):** Lobby 입장 → `GetRelicProfile` 1회 → craft/equip 성공 후 재호출.
@@ -672,9 +697,9 @@ game:GetService("ReplicatedStorage").Remotes.GetRelicProfile:InvokeServer()
 
 **기대 (`RelicProfileTestSeed = nil`):** `ok == true`, `craftableRelics` 7종 (`isCraftable` 정의), `startingEligibleRelics == {}`, `ownedRelics == {}`, `relicStartingSlotMax == 1`.
 
-**Stage:** `ProgressionService` chest는 계속 `GameConfig.Debug.Phase3FakeOwnedRelicIds` — 프로필과 **미연동**.
 
-**Starting 과도기 유지:** `StartingRelicSelectRequest`, `RelicData` 3종, `selectedStartingRelicByPlayer`, Teleport `startingRelicId`.
+
+
 
 
 ---
@@ -711,7 +736,7 @@ print(r.GetRelicProfile:InvokeServer())
 | **수정** | `default.project.json` — `Remotes.EquipStartingRelicsRequest` |
 | **mutation** | `equippedStartingRelics` 전체 스냅샷 교체 (shallow copy) |
 | **응답** | 성공 `{ ok, equippedStartingRelics, profile }` · 실패 `{ ok=false, reason }` |
-| **현재 데이터** | 7종 `isStartingEligible=false` → non-empty equip은 `NOT_STARTING_ELIGIBLE`; `{}`만 성공 |
+| **7A 정책** | `NOT_STARTING_ELIGIBLE` 제거 — owned + slot cap만 |
 | **미구현** | UI, DataStore, Teleport, Stage chest/StartingRelic 연동 |
 
 **Lobby Studio 검증 (클라 Command Bar):**
@@ -720,5 +745,133 @@ print(r.GetRelicProfile:InvokeServer())
 local r = game:GetService("ReplicatedStorage").Remotes
 print(r.EquipStartingRelicsRequest:InvokeServer({}))  -- A: ok, equipped {}
 -- craft/seed owned 후:
-print(r.EquipStartingRelicsRequest:InvokeServer({ "needle_edge" }))  -- C: NOT_STARTING_ELIGIBLE
+print(r.EquipStartingRelicsRequest:InvokeServer({ "needle_edge" }))  -- C: ok if owned (7A+)
 ```
+
+
+---
+
+### 13.15 Historical — 5C dev bridge (obsolete)
+
+| 항목 | 정책 |
+|------|------|
+| **모듈** | `LobbyRelicFusionCraftClient.lua` — `LobbyClient.init`에서 require |
+| **플래그** | `GameConfig.Debug.ShowLobbyRelicFusionCraftDev` — **기본 `false`**. 5C Publish 검증 빌드만 `true` → 검증 후 **`false` 복구 + 재Publish** |
+| **목록 SSOT** | `GetRelicProfile` 응답: `craftableRelics` (Craft 행) + `ownedRelics` (Owned 섹션). `RelicDefinitions`는 label/메타 **보조만** |
+| **Craft** | `CraftRelicRequest:InvokeServer(relicId)` 만. 성공 시 상태 `Crafted: <relicId>` 후 refresh |
+| **UI** | `RelicFusionPanel` — `RelicFusionStation` (`LobbyPanel=RelicFusionPanel`). 없으면 런타임 `RelicCraftList` / `RelicFusionCraftStatus` 생성 |
+| **금지** | 서버 craft/DataStore/owned 직접 조작 · 5C chest 로직 우회 · 정식 Lobby Relic UI · `CraftRelicRequest` 서버 변경 |
+
+**Publish 5C craft 절차 (Command Bar 불필요):**
+
+1. Rojo sync 후 `ShowLobbyRelicFusionCraftDev = true` 로 **로비만** 재Publish (스테이지는 기존 5C 빌드 유지 가능).
+2. 로비 입장 → **Relic Fusion Station** → 패널에서 `needle_edge` **Craft** (시드: `RelicProfileTestSeed.blueprintProgress.needle_edge = 1`, 재료 `{}`).
+3. Owned 섹션에 `needle_edge` 표시 · Craftable에서 제거 확인 → 스테이지 Spear 런으로 §13.14 표 순서 계속.
+4. 검증 종료: `ShowLobbyRelicFusionCraftDev = false` (+ chest 가속 플래그 복구) → sync → **재Publish**.
+
+**Studio-only 대안:** `CraftRelicRequest:InvokeServer("needle_edge")` (Publish 플래그 off 시 패널 비활성).
+**대체:** Step 6 정식 UI (§13.16) — dev 모듈·플래그 제거.
+
+---
+
+### 13.16 Step 6 — Lobby Relic UI (정식)
+
+| 우선순위 | 범위 | 모듈 | Remote |
+|----------|------|------|--------|
+| **A** | Collection: owned, blueprint | `LobbyRelicCollectionPanelClient` | `GetRelicProfile` |
+| **B** | Craft: craftable + Craft | `LobbyRelicFusionPanelClient` | `GetRelicProfile`, `CraftRelicRequest` |
+| **C** | Materials: 3키 | `LobbyClient` + `LobbyRelicProfileClient` | `GetRelicProfile` |
+| **D** | Equip read-only | Collection 동일 | **호출 없음** |
+
+| 제거 | `LobbyRelicFusionCraftClient`, `LobbyRelicMaterialsDevClient`, dev Debug 플래그 |
+| 유지 | `StartingRelicPanel`, `StartingRelicSelectRequest`, `RelicData`, `RelicFusionStation` |
+---
+
+### 13.17 Step 7A — StartingRelicPanel (owned loadout)
+
+| 항목 | 정책 |
+|------|------|
+| **후보 SSOT** | `ownedRelics` = 패널에서 선택 가능한 전체 |
+| **장착 SSOT** | `equippedStartingRelics` = 이번 런 시작 loadout (`EquipStartingRelicsRequest` 전체 배열 스냅샷) |
+| **Chest pool (7B)** | `ownedRelics` − `equippedStartingRelics` − `phase3ActiveRelicIds` |
+| **Equip 게이트** | **owned** + **slot cap** (`relicStartingSlotMax` / `GameConfig.RelicStartingSlotMax`)만 · `isStartingEligible` **미사용** (Definitions 값 변경 없음) |
+| **UI** | Add / Remove per owned row · cap 초과 시 **Full** · `Clear slots` → `{}` |
+| **Deprecated** | `StartingRelicSelectRequest` 클라 미연동 · 서버 warn only |
+| **Teleport 7A** | `equippedStartingRelics[1]` → legacy `startingRelicId` · **7B** full array → `equippedStartingRelicIds` |
+| **Legacy UI** | `RelicButtonList` + RelicData 3버튼 제거(Studio/MCP) · `StartingRelicOwnedList`만 |
+| **모듈** | `LobbyRelicStartingPanelClient` · `RelicProfileService.canEquipStartingRelics` (eligible 검사 제거) |
+
+**7A 검증 순서:** (1) owned 표시 (2) owned면 Add 가능(eligible 무관) (3) SelectRequest 클라 없음 (4) Teleport (5) owned non-empty Equip RF + `{}` clear + cap 초과 `TOO_MANY_EQUIPPED`.
+
+### 13.18 Step 7B — Cross-Place equipped → active seed
+
+| 항목 | 정책 |
+|------|------|
+| **Teleport key** | `RunConstants.TeleportKeys.EquippedStartingRelicIds` |
+| **Lobby** | `LobbyBootstrap` — profile `equippedStartingRelics` + `startingRelicId` dual-write |
+| **RunContext** | `getEquippedStartingRelicIds()` — `toFloor` payload 유지 |
+| **phase3 시드** | `trySeedEquippedStartingRelicsFromRunContext` — **RunContext only** · idempotent |
+| **시드 트리거** | StageBootstrap (RunContext 직후, startSession 전) + ensureProgress (initialized 시) |
+| **Chest equipped** | `getEquippedStartingRelicIdsForChest` — nil/`{}` fake → RunContext; non-empty fake → override only |
+| **5C** | `sessionOwnedRelicIds` 유지 |
+| **Done (7C-3)** | RelicData · startingRelicId · StartingRelicSelectRequest removed |
+
+**7B 검증:** owned needle_edge+giants_pike · equip needle_edge → active needle_edge · chest needle_edge 제외 · giants_pike 후보 · chest pick 후 owned 불변.
+### 13.19 Step 7C-1 — RelicData → RelicDefinitions (partial migrate)
+
+| id | 7C-1 정책 | RelicDefinitions | Chest pool |
+|----|-----------|------------------|------------|
+| `old_shield_emblem` | **migrate** — SS Sweep damage ×1.10 | 등록 · `isRunChestEligible=false` | `Phase3RelicPool` **미등록** (starting loadout) |
+| `knights_belt` | **migrate** — SS attack interval ×0.80 | 등록 · `isRunChestEligible=false` | 동일 |
+| `cracked_sword_tip` | **retire** — Thrust ×1.10 **이관 안 함** (후속: Block 후 Thrust crit mechanic) | **미등록** | — |
+
+**런타임:** 7C-1 Definitions 이관 ✓ · **7C-2** combat/offer/HUD RelicData 제거 ✓ · Teleport payload·`RelicData.lua` 파일 — **7C-3**.
+
+**7B 시드:** migrated 2종은 `equippedStartingRelics` → `phase3ActiveRelicIds` + `RelicModifierApplicator`로 전투 적용. `startingRelicId`가 동일 id이면 RelicData multiplier와 **중복 가능**(7C-1~7C-2 구간); Publish 검증은 Definitions 장착 플로우 우선.
+
+**DataStore (`RelicProfilePersistence`):** `ownedRelics["cracked_sword_tip"]` **유지**. `equippedStartingRelics` 로드 시 `cracked_sword_tip` **자동 제거** (Equip API는 Definitions id만 허용).
+
+**Craft meta (migrated 2종):** `isCraftable=true`, `isPermanentUnlockable=true`, `blueprintId` = id, `craftCost` = `{ blueprintProgressMin = 1, materials = {} }`.
+
+**7C-1 검증:** (1) `old_shield_emblem` / `knights_belt` owned → Equip OK → Stage active + Applicator 효과 (2) 7B chest 회귀 (`needle_edge` 등) (3) `cracked` equipped strip — 재접속 후 loadout에서 absent, owned 유지 (4) chest에 migrated 2종 **미등장**.
+
+**7C-2 handoff:** RelicData 삭제, `startingRelicId` 제거, pick weights 이전, `cracked` RelicData 잔재 정리.
+
+### 13.20 Historical — Step 7C-2 (RelicData runtime removal)
+
+| 항목 | 7C-2 |
+|------|------|
+| **SS 전투** | `UpgradeData.getSwordShieldEffectiveCombat` — RelicData mul 제거 · `phase3RelicIds` + Applicator만 |
+| **SS 레벨업 offer** | `UpgradeOfferBuilder` — RelicData pick weight 제거 (균등 3선) |
+| **Progression** | `startingRelicId` 시드 제거 · `getStartingRelicId()` **deprecated, always nil** (7C-3 삭제 예정) |
+| **HUD** | `Phase3ActiveRelicIds` 표시 · `StartingRelicId` 제거 |
+| **Removed in 7C-3** | `RelicData.lua` · `startingRelicId` · `StartingRelicSelectRequest` |
+
+**이중 배율:** 7C-2 이후 migrated id 장착 시 RelicData+Applicator 중복 **해소** (전투는 phase3만).
+
+**7C-2 검증:** `knights_belt`/`old_shield_emblem` equip → 단일 배율 · 7B `needle_edge` 회귀 · SS level-up 3선 정상.
+
+**7C-3 handoff:** `RelicData.lua` 삭제 · Teleport/RunContext/LobbyBootstrap `startingRelicId` 제거 · `getStartingRelicId` API 제거.
+
+### 13.21 Step 7C-3
+
+| Item | 7C-3 |
+|------|------|
+| Deleted | Shared/RelicData.lua |
+| Teleport | StartingRelicId key removed |
+| RunContext | startingRelicId removed; equippedStartingRelicIds kept |
+| LobbyBootstrap | dual-write + StartingRelicSelectRequest removed |
+| Progression | startingRelicId state + getStartingRelicId removed |
+| Combat SSOT | 7B equipped to phase3ActiveRelicIds seed (unchanged) |
+---
+
+## 14. Phase 4+ backlog (not in Phase 3 core)
+
+| 항목 | 상태 |
+|------|------|
+| Blueprint discovery | 미구현 |
+| RewardBudget balancing | placeholder (5B) |
+| RelicShopPanel / Rank / Relic upgrade | Phase 4+ |
+| Class combat effects | detection only |
+| cracked_sword_tip redesign | retired |
+| Relic pool / offer weight | MVP round-robin |

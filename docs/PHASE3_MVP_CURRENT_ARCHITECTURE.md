@@ -8,7 +8,7 @@
 | 문서 경로 | `docs/PHASE3_MVP_CURRENT_ARCHITECTURE.md` |
 | 코드 정본 | `src/` + `default.project.json` |
 | 선행 문서 | `docs/PHASE3_DATASET_ANALYSIS.md`, `docs/PHASE3_RELIC_CANDIDATE_TRIAGE.md`, `docs/CHOICE_FLOW_CURRENT_AND_PHASE3_PLAN.md` |
-| 최종 갱신 기준 | Phase 3 MVP: 7종 Run relic · activeWeapons pool · SS/TH/Spear modifier · BuildTag/ClassDetection |
+| 최종 갱신 기준 | Phase 3 meta core closeout · 7종 Run relic · profile/chest/Starting · BuildTag/ClassDetection baseline |
 
 ---
 
@@ -16,19 +16,16 @@
 
 런타임 유물은 **두 경로**로 분리된다. 혼동하지 않는다.
 
-### 1.1 StartingRelic (Lobby → Stage)
+### 1.1 Starting loadout (Lobby to Stage, 7B+)
 
-| 항목 | **Implemented** |
+| Item | Implemented |
 |------|-----------------|
-| 선택 | Lobby UI에서 3택1 |
-| 전달 | Stage 진입 시 `startingRelicId` (Teleport / RunContext) |
-| 데이터 | `RelicData.lua` (**StartingRelic-only**) |
-| Stage ChoiceKind | `StartingRelic` 오퍼 **없음** — 시드만 |
-| SS 전투 | `RelicData.getCombatMultipliers(startingRelicId)` — Sweep/Thrust/interval 가중 |
-| SS 업그레이드 가중 | `getSwordShieldUpgradePickWeights` |
-| 유지 id | `old_shield_emblem`, `cracked_sword_tip`, `knights_belt` |
+| Select | StartingRelicPanel + EquipStartingRelicsRequest |
+| Teleport | equippedStartingRelicIds to RunContext |
+| Seed | ProgressionService phase3ActiveRelicIds (7B) |
+| SS combat | RelicDefinitions + RelicModifierApplicator (7C-2+) |
+| Legacy | RelicData.lua / startingRelicId removed (7C-3) |
 
-`RelicData`는 **DroppedRelic·Phase3 Run relic을 다루지 않는다.**
 
 ### 1.2 Run Relic (Stage 런 중 — Phase3RelicChest)
 
@@ -41,7 +38,9 @@
 | 표시 | `BuildTagService` snapshot · `ClassDetection` (효과 없음, detect only) |
 | 테스트 시드 | `GameConfig.Debug.Phase3TestRelicIds` (정식 unlock/equip 아님) |
 
-Run relic id는 **`RelicDefinitions` SSOT**이다. `RelicData` id와 **별도 네임스페이스** (`run_*` 등 lobby id 충돌 회피).
+Run relic id is RelicDefinitions SSOT (run_* namespace).
+
+**Meta (closeout):** `RelicProfilePersistence` · Lobby craft/equip UI · chest = owned − equipped − active.
 
 ---
 
@@ -54,7 +53,7 @@ Run relic id는 **`RelicDefinitions` SSOT**이다. `RelicData` id와 **별도 �
 | `ChoiceKind = "DroppedRelic"` | **removed** |
 | `pendingDroppedRelicByPlayer` | **removed** |
 | `droppedRelicId` state / getter / HUD read | **removed** |
-| `RelicData` `DROPPED_*` | **removed** |
+| `RelicData` `DROPPED_*` | **removed** (module deleted 7C-3) |
 | `getDroppedRelicChoices` / `getDroppedRelicEffect` | **removed** |
 | `shield_spike` dropped branch | **removed** |
 | Phase 2 보라 `RelicChest` kill drop | **removed** |
@@ -72,7 +71,7 @@ Run relic id는 **`RelicDefinitions` SSOT**이다. `RelicData` id와 **별도 �
 적 처치 (sourceWeaponId ∈ { SwordShield, Spear, TwoHandedSword })
   → canSpawnPhase3RelicChestOnKill
        · activeWeapons 기준 미보유 Phase3 pool 존재 시에만 roll
-  → Phase3RelicChestDropChance roll (또는 Debug.ForcePhase3RelicChestOnKill)
+  → Phase3RelicChestDropChance roll (Publish: ForcePhase3RelicChestOnKill = false)
   → RelicDropService.spawnPhase3RelicChestAt
   → 플레이어 픽업 (반경 내)
   → ProgressionService.tryGrantPhase3RelicOfferFromChest
@@ -83,7 +82,7 @@ Run relic id는 **`RelicDefinitions` SSOT**이다. `RelicData` id와 **별도 �
   → submit choiceId
   → addPhase3Relic → phase3ActiveRelicIds
   → RelicModifierApplicator (effective combat)
-  → BuildTag / ClassDetection (HudSync DevCombat)
+  → BuildTag / ClassDetection (HudSync DevCombat when enabled)
 ```
 
 | 단계 | 모듈 |
@@ -93,7 +92,7 @@ Run relic id는 **`RelicDefinitions` SSOT**이다. `RelicData` id와 **별도 �
 | 오퍼 | `ProgressionService.buildPhase3RelicOffer` → `Phase3RelicPool.buildOfferChoicesForWeapons` |
 | 보유 | `ProgressionService.addPhase3Relic` |
 
-**주의:** `Phase3RelicChest` ≠ 과거 DroppedRelic `RelicChest`.
+**주의:** `Phase3RelicChest` ≠ 과거 DroppedRelic `RelicChest`. Chest는 **owned unlock이 아님** — `phase3ActiveRelicIds`만 변경.
 
 ---
 
@@ -111,8 +110,8 @@ Run relic id는 **`RelicDefinitions` SSOT**이다. `RelicData` id와 **별도 �
 | 무기 집합 | `state.activeWeapons` 키 중 Phase3 풀 비어 있지 않은 무기 (알파벳 정렬) |
 | Fallback | `activeWeapons` 비어 있으면 `getWeaponId` 1종 |
 | 합집합 | 무기별 `POOL_BY_WEAPON_ID` relic id 병합 |
-| Owned | `Debug.Phase3FakeOwnedRelicIds`: **`nil`** = legacy(전 static owned), **`{}`** = none, **배열** = strict ∩ |
-| 제외 | `phase3ActiveRelicIds` + `Debug.Phase3FakeEquippedStartingRelicIds` |
+| Owned | `ProgressionService.getSessionOwnedRelicIdsForChest` ← DataStore profile (5C); `Phase3FakeOwnedRelicIds = nil` on Publish |
+| 제외 | `equippedStartingRelicIds` + `phase3ActiveRelicIds` |
 | Eligible | `RelicDefinitions.isRunChestEligible ~= false` |
 | 선택지 수 | 최대 **3** |
 | 추출 | **round-robin** (무기 순서 고정, 무기별 pool 순서 유지) |
@@ -199,35 +198,37 @@ Run relic id는 **`RelicDefinitions` SSOT**이다. `RelicData` id와 **별도 �
 
 ## 8. Phase 3 MVP — Verified vs Not Implemented
 
-### 8.1 Verified (playtest)
+### 8.1 Verified (playtest / dev)
 
 | 축 | 상태 |
 |----|------|
 | Run relic 7종 + pool | `Phase3RelicPool` + `RelicDefinitions` |
 | Phase3RelicChest kill drop | SS / Spear / TH |
 | activeWeapons offer pool | round-robin, max 3 |
-| Modifier SS / TH / Spear | effective + combat + DevCombat |
-| BuildTag `TagCounts` | DevCombat |
+| Modifier SS / TH / Spear | effective + combat (DevCombat when `ShowDevCombatPanel=true`, Publish default false) |
+| BuildTag `TagCounts` | DevCombat when enabled |
 | ClassDetection | Guardian / Slayer / Lancer, `ambiguous` |
-| StartingRelic | Lobby → `RelicData` only |
+| DataStore `PlayerRelicProfile` | `RelicProfilePersistence` (5A) |
+| Lobby craft / equip / collection UI | Step 6 + 7A |
+| Result material grant | `RunResultRewardPolicy` (5B placeholder) |
+| Starting loadout | equippedStartingRelicIds → phase3 seed · Definitions + Applicator |
 
-### 8.2 Not implemented (explicit)
+### 8.2 Not implemented / Phase 4+ (explicit)
 
 | 항목 |
 |------|
-| DataStore 영구 저장 |
-| relic unlock / equip (정식) |
-| class **effect** (detection만 있음) |
+| **blueprint discovery** (runs → `blueprintProgress`) |
+| RewardBudget balancing (Result materials placeholder only) |
+| `RelicShopPanel` / Rank / Relic upgrade |
+| class **effect** (ClassDetection baseline only) |
 | 파생 클래스 (Paladin, Impaler, …) |
 | 상태이상 (burn, bleed, stun, …) |
 | Golden Trident / Forked Pike / Konic's Teeth / Sawtooth Spearhead 등 **패턴 변경** 유물 |
 | Attack_Amount / 다중 thrust |
 | AOE relic |
 | block / knockback / crit / attack skip relic (Phase3 applicator) |
-| relic stack system (런당 1회 획득만) |
-| relic weight / random offer policy (현재 round-robin deterministic) |
-| floor / result reward relic 구조 |
-| `RelicData` → `RelicDefinitions` 일괄 마이그레이션 |
+| relic weight / random offer policy (round-robin deterministic) |
+| `cracked_sword_tip` mechanic redesign |
 
 ---
 
@@ -236,11 +237,12 @@ Run relic id는 **`RelicDefinitions` SSOT**이다. `RelicData` id와 **별도 �
 | 모듈 | 경로 | 역할 |
 |------|------|------|
 | **Phase3RelicPool** | `Shared/Phase3RelicPool.lua` | 무기별 pool · `buildOfferChoicesForWeapons` · round-robin |
-| **RelicDefinitions** | `Shared/RelicDefinitions.lua` | Run relic 7종 정의 · `validate()` |
+| **RelicDefinitions** | `Shared/RelicDefinitions.lua` | Run relic 7종 + migrated starting ids |
 | **RelicModifierApplicator** | `Shared/RelicModifierApplicator.lua` | `applyToSwordShieldEffective` / `TwoHandedSword` / `Spear` |
 | **UpgradeData** | `Shared/UpgradeData.lua` | effective 계산 후 `phase3RelicIds` applicator |
-| **RelicData** | `Shared/RelicData.lua` | **StartingRelic-only** |
-| **ProgressionService** | `ServerScriptService/ProgressionService.lua` | `phase3ActiveRelicIds`, offer, `getActiveWeaponIdsForPhase3Offer` |
+| **RelicProfileService** | `ServerScriptService/RelicProfileService.lua` | Lobby profile · craft · equip |
+| **RelicProfilePersistence** | `ServerScriptService/RelicProfilePersistence.lua` | DataStore I/O |
+| **ProgressionService** | `ServerScriptService/ProgressionService.lua` | `phase3ActiveRelicIds`, offer, chest filters |
 | **CombatService** | `ServerScriptService/CombatService.lua` | 킬 드랍 · heartbeat (activeWeapons) · relic id 분기 **없음** |
 | **RelicDropService** | `ServerScriptService/RelicDropService.lua` | `spawnPhase3RelicChestAt` |
 | **BuildTagService** | `ServerScriptService/BuildTagService.lua` | snapshot → TagCounts / ClassScores |
@@ -259,10 +261,11 @@ WeaponTagData
   → HUDClient DevCombat
 ```
 
-**Parallel paths (do not merge in MVP):**
+**Parallel paths (do not merge):**
 
-- **StartingRelic:** Lobby → `startingRelicId` → `RelicData`
+- **Starting loadout:** Lobby `EquipStartingRelicsRequest` → Teleport `equippedStartingRelicIds` → `phase3ActiveRelicIds` seed
 - **Run relic:** `Phase3RelicChest` → `phase3ActiveRelicIds` → `RelicDefinitions` + applicator
+- **Account:** craft → `ownedRelics` (chest does **not** unlock owned)
 
 ---
 
@@ -280,7 +283,7 @@ WeaponTagData
 | `{ "run_reinforced_rim" }` | SS Sweep dmg ×1.15 |
 | `{ "run_rhythm_harness" }` | SS interval ×0.90 |
 
-절차: Rojo sync → Stage Play → weapon 선택 → config 변경 시 **재Play** → `ShowDevCombatPanel = true`.
+절차: Rojo sync → Stage Play → weapon 선택 → config 변경 시 **재Play** → **Studio only:** `ShowDevCombatPanel = true` (Publish default **false**).
 
 ---
 
@@ -290,8 +293,8 @@ WeaponTagData
 2. relic offer **random / weight** 정책 (현재 round-robin deterministic)  
 3. relic **pool 추가** (triage Tier A/B, stat-only)  
 4. **class effect** 설계 (detection과 분리)  
-5. **unlock / equip / DataStore** 설계  
-6. **floor / result reward**와 relic 보상 연결 검토  
+5. **blueprint discovery** + RewardBudget  
+6. **RelicShop** / Rank  
 
 ---
 
@@ -303,10 +306,21 @@ WeaponTagData
 | No per-relic combat if | `CombatService`에 `relicId ==` 분기 **금지** |
 | Applicator path | stat → `RelicModifierApplicator` + `UpgradeData` effective |
 | Pattern/status | Attack_Amount, multi-thrust, AOE, status — **별도 마일스톤** |
-| StartingRelic vs Run | `RelicData` vs `RelicDefinitions` **분리 유지** |
+| Starting vs Run vs Account | equipped/phase3 (run) vs owned (account); chest never grants owned |
 | Detection ≠ effect | ClassDetection / BuildTag ≠ 클래스 전투 배율 |
 | DroppedRelic | **복구 금지** — Phase3RelicChest만 |
+| RelicData / startingRelicId | **복구 금지** (removed 7C-3) |
 | `src/` change | PLAN + `APPROVE_PATCH` (`.cursor/rules/01-workflow.mdc`) |
+
+---
+
+## 13. Phase 3 Closeout Status
+
+**Meta progression core: COMPLETE.** DataStore profile, Lobby relic UI, craft/equip, equipped→phase3 seed, owned chest filter, Result material placeholder (5B), 7C-3 legacy removal, publish-safe `GameConfig.Debug`.
+
+**Verification:** development playtest (no formal Publish regression suite).
+
+**Phase 4+:** See `docs/PHASE3_RELIC_META_PROGRESSION.md` §14.
 
 ---
 
@@ -315,6 +329,7 @@ WeaponTagData
 | 용도 | 경로 |
 |------|------|
 | Choice / pending | `docs/CHOICE_FLOW_CURRENT_AND_PHASE3_PLAN.md` |
+| Meta SSOT | `docs/PHASE3_RELIC_META_PROGRESSION.md` §0 |
 | 엑셀·Tier | `docs/PHASE3_DATASET_ANALYSIS.md` |
 | 후보 triage | `docs/PHASE3_RELIC_CANDIDATE_TRIAGE.md` |
 | Playtest | `docs/VERIFICATION_PLAYTEST.md` |
@@ -328,3 +343,4 @@ WeaponTagData
 | 2026-05-27 | Phase 3 MVP 실플레이 검증 구조 고정 초안 (relic TH/Spear + BuildTag/ClassDetection). |
 | 2026-05-27 | DroppedRelic legacy removed · Phase3RelicChest · 7종 pool · activeWeapons offer · SS/Spear range relic · 문서 전면 갱신. |
 | 2026-05-27 | Meta Step 3: fake owned/equipped Debug · RunRelicChestPool filters · CombatService offer gate helper. |
+| 2026-05-31 | Closeout docs sync — meta core complete · §8/§13 updated. |

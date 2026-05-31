@@ -21,16 +21,20 @@
 |------------|------|
 | **DroppedRelic** | **legacy removed** — Phase 2 보라 `RelicChest` kill drop·`tryGrantDroppedRelicOfferFromChest`·`pendingDroppedRelicByPlayer` 제거됨. 런타임에서 선택 UI **발송 없음**. |
 
-**StartingRelic:** Lobby에서 유물을 선택하고 TeleportData로 전달. **Stage `ChoiceKind == "StartingRelic"` 오퍼 없음.** `ProgressionService`는 `startingRelicId`만 시드.
+### Starting loadout (현행 — not a ChoiceKind)
+
+Lobby `StartingRelicPanel` → `EquipStartingRelicsRequest` → profile `equippedStartingRelics` → Teleport `equippedStartingRelicIds` → `RunContext` → `ProgressionService.trySeedEquippedStartingRelicsFromRunContext` → `phase3ActiveRelicIds`.
+
+**Stage에 `ChoiceKind == "StartingRelic"` 오퍼 없음.** (`startingRelicId` / `RelicData` — **removed 7C-3**, historical only.)
 
 ### 현재 relic 획득 경로 (런타임)
 
 | 경로 | 흐름 |
 |------|------|
-| **Phase3Relic** | 적 처치(TH/Spear 킬, pool·확률) 또는 수동 스폰 → `Phase3RelicChest` 픽업 → `ChoiceKind = "Phase3Relic"` → `phase3ActiveRelicIds` |
-| **StartingRelic** | Lobby UI → RunContext/Teleport → `startingRelicId` (SS 전투·업그레이드 가중치, RelicData starting) |
+| **Phase3Relic** | 적 처치(TH/Spear 킬, pool·확률) 또는 수동 스폰 → `Phase3RelicChest` 픽업 → `ChoiceKind = "Phase3Relic"` → `phase3ActiveRelicIds` (owned − equipped − active 후보) |
+| **Starting (equipped)** | Lobby equip → cross-place seed → `phase3ActiveRelicIds` (no separate ChoiceKind) |
 
-**RelicData**는 **StartingRelic-only** (Lobby → `startingRelicId`). DroppedRelic data/API는 **Step C에서 제거**됨.
+DroppedRelic data/API — **removed** (Phase 2). See legacy table above.
 
 ---
 
@@ -100,7 +104,7 @@
 
 ## 5. Phase3RelicChest
 
-- **적 처치 드랍:** `CombatService` — TH/Spear 킬, `Phase3RelicPool`·`Phase3RelicChestDropChance` (또는 `ForcePhase3RelicChestOnKill`).
+- **적 처치 드랍:** `CombatService` — TH/Spear 킬, `Phase3RelicPool`·`Phase3RelicChestDropChance` (Publish: `ForcePhase3RelicChestOnKill` **false**).
 - **수동 테스트:** `RelicDropService.spawnPhase3RelicChestAt(position, player)` — Command Bar 예:
 
 ```lua
@@ -134,6 +138,7 @@ if hrp then RDS.spawnPhase3RelicChestAt(hrp.Position, pl) end
 2. **DroppedRelic offer 경로를 Phase3Relic으로 대체하지 않는다** (별도 chest·정의 유지).
 3. **새 ChoiceKind 추가 시** submit 순서·pending·flush를 본 문서에 갱신.
 4. **클라 submit에 `ChoiceKind` 추가**는 별도 PLAN·승인 후.
+5. **RelicData / startingRelicId Starting 경로 복구 금지.**
 
 ---
 
@@ -142,4 +147,5 @@ if hrp then RDS.spawnPhase3RelicChestAt(hrp.Position, pl) end
 | 항목 | 내용 |
 |------|------|
 | 정본 코드 | `ProgressionService.lua`, `Phase3RelicPool.lua`, `RelicDropService.lua` |
-| DroppedRelic cleanup | Step A offer/submit; Step B `droppedRelicId` read; Step C RelicData dropped data/API removed |
+| DroppedRelic cleanup | Step A offer/submit; Step B `droppedRelicId` read; Step C RelicData dropped data/API **removed** |
+| Meta SSOT | `docs/PHASE3_RELIC_META_PROGRESSION.md` §0 |
