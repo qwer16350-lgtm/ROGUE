@@ -6,6 +6,8 @@ local RelicProfilePersistence = {}
 
 local SCHEMA_VERSION = 1
 local MATERIAL_KEYS = { "shard", "ancient_shard", "ceremonial_coin" }
+--- Retired RelicData id (7C-1): keep ownedRelics; never restore to equipped loadout.
+local RETIRED_EQUIPPED_RELIC_ID = "cracked_sword_tip"
 
 local enabled = false
 local dataStoreName = "PlayerRelicProfile"
@@ -68,7 +70,7 @@ local function copyEquippedStartingRelics(src: any): { string }
 		return out
 	end
 	for _, relicId in ipairs(src) do
-		if type(relicId) == "string" and relicId ~= "" then
+		if type(relicId) == "string" and relicId ~= "" and relicId ~= RETIRED_EQUIPPED_RELIC_ID then
 			table.insert(out, relicId)
 		end
 	end

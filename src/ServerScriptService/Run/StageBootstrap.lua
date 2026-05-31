@@ -11,9 +11,12 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local StageData = require(Shared:WaitForChild("StageData"))
 
+local ServerScriptService = game:GetService("ServerScriptService")
+
 local RunContext = require(script.Parent:WaitForChild("RunContext"))
 local Teleport = require(script.Parent:WaitForChild("Teleport"))
 local StageFlow = require(script.Parent:WaitForChild("StageFlow"))
+local ProgressionService = require(ServerScriptService:WaitForChild("ProgressionService"))
 
 local StageBootstrap = {}
 
@@ -40,6 +43,10 @@ function StageBootstrap.init(deps)
 	assert(deps.gameConfig, "[StageBootstrap] deps.gameConfig required")
 
 	RunContext.initFromTeleportData(deps.players)
+
+	for _, player in ipairs(deps.players:GetPlayers()) do
+		ProgressionService.trySeedEquippedStartingRelicsFromRunContext(player)
+	end
 
 	StageFlow.init({
 		players = deps.players,

@@ -127,6 +127,7 @@ return {
 	------------------------------------------------------------
 	------------------------------------------------------------
 	Debug = {
+		-- Publish-safe defaults. Studio: set true / uncomment seed only for local smoke.
 		ShowDevCombatPanel = true,
 		ShowAttackRanges = true,
 		WeaponDropChanceOverride = nil,
@@ -137,11 +138,10 @@ return {
 		Phase3FakeOwnedRelicIds = nil,
 		Phase3FakeEquippedStartingRelicIds = {},
 		ProgressionVerbose = false,
-		-- Lobby RelicProfileService session seed (Studio). nil = empty profile on join.
-		RelicProfileTestSeed = {
-			blueprintProgress = { needle_edge = 1 },
-			ownedRelics = {},
-			materials = {},
-		},
+		-- Lobby craft: false = enforce blueprint + materials (Publish). Studio smoke: true.
+		RelicCraftSkipRequirements = true,
+		-- nil = no merge after DataStore load (Publish). Studio example (uncomment):
+		-- RelicProfileTestSeed = { blueprintProgress = { needle_edge = 1 }, ownedRelics = {} },
+		RelicProfileTestSeed = nil,
 	},
 }

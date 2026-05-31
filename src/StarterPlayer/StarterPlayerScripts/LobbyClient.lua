@@ -64,11 +64,78 @@ local function hideAllPanels(panelMap: { [string]: GuiObject })
 	end
 end
 
+local relicFusionPanel: any = nil
+local relicCollectionPanel: any = nil
+local relicProfileClient: any = nil
+
+local INVENTORY_MATERIALS_LABEL = "RelicMaterialsLabel"
+
+local function refreshInventoryMaterials(panelMap: { [string]: GuiObject })
+	if not relicProfileClient then
+		return
+	end
+	local panel = panelMap.InventoryPanel
+	if not panel then
+		return
+	end
+	local label = deepFind(panel, INVENTORY_MATERIALS_LABEL)
+	if not label or not label:IsA("TextLabel") then
+		label = deepFind(panel, "MaterialsLabel")
+	end
+	if not label or not label:IsA("TextLabel") then
+		return
+	end
+
+	task.spawn(function()
+		local response = relicProfileClient.getLastProfile()
+		if type(response) ~= "table" or response.ok ~= true then
+			response = relicProfileClient.fetchProfile()
+		end
+		if type(response) == "table" and response.ok == true then
+			label.Text = "Materials: " .. relicProfileClient.formatMaterials(response.materials)
+		else
+			local reason = type(response) == "table" and response.reason or "LOAD_FAILED"
+			label.Text = "Materials: (" .. tostring(reason) .. ")"
+		end
+	end)
+end
+
+local function ensureInventoryMaterialsLabel(panel: GuiObject)
+	if deepFind(panel, INVENTORY_MATERIALS_LABEL) then
+		return
+	end
+	local lbl = Instance.new("TextLabel")
+	lbl.Name = INVENTORY_MATERIALS_LABEL
+	lbl.BackgroundTransparency = 1
+	lbl.Position = UDim2.fromOffset(16, 50)
+	lbl.Size = UDim2.new(1, -32, 0, 40)
+	lbl.Font = Enum.Font.Gotham
+	lbl.TextSize = 13
+	lbl.TextColor3 = Color3.fromRGB(200, 210, 220)
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.TextYAlignment = Enum.TextYAlignment.Top
+	lbl.TextWrapped = true
+	lbl.Text = "Materials: ..."
+	lbl.Parent = panel
+end
+
 local function showOnlyPanel(panelMap: { [string]: GuiObject }, panelName: string)
 	hideAllPanels(panelMap)
 	local p = panelMap[panelName]
 	if p then
 		p.Visible = true
+	end
+	if panelName == "RelicFusionPanel" and relicFusionPanel and relicFusionPanel.notifyPanelOpened then
+		relicFusionPanel.notifyPanelOpened()
+	elseif panelName == "ArtifactCollectionPanel" and relicCollectionPanel and relicCollectionPanel.notifyPanelOpened then
+		relicCollectionPanel.notifyPanelOpened()
+	elseif panelName == "InventoryPanel" then
+		if panelMap.InventoryPanel then
+			ensureInventoryMaterialsLabel(panelMap.InventoryPanel)
+		end
+		refreshInventoryMaterials(panelMap)
+	elseif panelName == "StartingRelicPanel" and relicStartingPanel and relicStartingPanel.notifyPanelOpened then
+		relicStartingPanel.notifyPanelOpened()
 	end
 end
 
@@ -196,48 +263,7 @@ local function wireLobbyStations(panelMap: { [string]: GuiObject })
 	end)
 end
 
-local function wireStartingRelicPanel(guiRoot: Instance)
-	local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
-	local selectEvent = remotes and remotes:WaitForChild("StartingRelicSelectRequest", 10)
-	if not selectEvent or not selectEvent:IsA("RemoteEvent") then
-		warn("[LobbyClient] Remotes.StartingRelicSelectRequest missing")
-		return
-	end
-
-	local panel = deepFind(guiRoot, "StartingRelicPanel")
-	if not panel or not panel:IsA("GuiObject") then
-		return
-	end
-
-	local selectedLabel = deepFind(panel, "SelectedStartingRelicLabel")
-	local function updateLocalSelectedLabel(relicId: string, button: GuiButton)
-		if not selectedLabel or not selectedLabel:IsA("TextLabel") then
-			return
-		end
-		local displayText = button.Text
-		if type(displayText) ~= "string" or displayText == "" then
-			displayText = relicId
-		end
-		-- local-only optimistic display until a server-ack flow is introduced.
-		selectedLabel.Text = string.format("Selected: %s", displayText)
-	end
-	local bindCount = 0
-	for _, d in ipairs(panel:GetDescendants()) do
-		local isButton = d:IsA("TextButton") or d:IsA("ImageButton")
-		if isButton then
-			local relicId = d:GetAttribute("StartingRelicId")
-			if type(relicId) == "string" and relicId ~= "" then
-				local btn = d :: GuiButton
-				btn.MouseButton1Click:Connect(function()
-					selectEvent:FireServer(relicId)
-					updateLocalSelectedLabel(relicId, btn)
-				end)
-				bindCount += 1
-			end
-		end
-	end
-	print(string.format("[LobbyClient] StartingRelic button binds: %d", bindCount))
-end
+local relicStartingPanel: any = nil
 local function cloneFromUIAssets(playerGui: PlayerGui): ScreenGui?
 	local uiAssets = ReplicatedStorage:FindFirstChild("UIAssets")
 	local lobbyFolder = uiAssets and uiAssets:FindFirstChild("Lobby")
@@ -446,9 +472,30 @@ function LobbyClient.init()
 	wirePlayerActionButtons(gui, panelMap)
 	wirePanelCloseButtons(gui, panelMap)
 	wireLobbyStations(panelMap)
-	wireStartingRelicPanel(gui)
+	relicProfileClient = require(script.Parent:WaitForChild("LobbyRelicProfileClient"))
+	relicProfileClient.init()
 
-	print("[LobbyClient] 패널/Station placeholder 연결 완료 (패널 1개만 표시, 서버 기능 없음)")
+	relicCollectionPanel = require(script.Parent:WaitForChild("LobbyRelicCollectionPanelClient"))
+	relicCollectionPanel.init(gui, relicProfileClient)
+
+	local function onProfileUpdatedAfterCraft()
+		if relicCollectionPanel and relicCollectionPanel.refresh then
+			relicCollectionPanel.refresh()
+		end
+		refreshInventoryMaterials(panelMap)
+	end
+
+	relicFusionPanel = require(script.Parent:WaitForChild("LobbyRelicFusionPanelClient"))
+	relicFusionPanel.init(gui, relicProfileClient, { onCraftSuccess = onProfileUpdatedAfterCraft })
+
+	relicStartingPanel = require(script.Parent:WaitForChild("LobbyRelicStartingPanelClient"))
+	relicStartingPanel.init(gui, relicProfileClient)
+
+	if panelMap.InventoryPanel then
+		ensureInventoryMaterialsLabel(panelMap.InventoryPanel)
+	end
+
+	print("[LobbyClient] Lobby relic UI wired (Collection / Fusion / Inventory materials)")
 end
 
 return LobbyClient

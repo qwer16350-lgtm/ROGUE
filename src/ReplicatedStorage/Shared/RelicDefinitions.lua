@@ -1,6 +1,6 @@
 -- Phase 3 MVP relic definition SSOT draft.
 -- This module does not apply combat effects by itself.
--- Existing RelicData remains the Phase 2 runtime relic path.
+-- Run combat: RelicModifierApplicator + phase3ActiveRelicIds (RelicData removed 7C-3).
 -- Only schema-safe candidates are registered here.
 -- Combat/Progression integration is a later milestone.
 -- Meta progression fields (blueprintId, craftCost, is*Eligible) are dead until Step 3+.
@@ -370,6 +370,89 @@ RelicDefinitions.DefinitionsById = {
 			},
 		},
 		notes = "Phase3RelicChest; legacy rhythm_strap concept via new id.",
+	},
+	old_shield_emblem = {
+		id = "old_shield_emblem",
+		sourceRow = 29,
+		label = "Old Shield Emblem",
+		relicGroup = "Ability/tag-based relic (능력 유물)",
+		description = "SwordShield Sweep 피해 ×1.10 (RelicData 7C-1 migrate)",
+		classTags = { "Guardian" },
+		effectTargetTags = { "ss", "sweep" },
+		modifierTags = { "Damage" },
+		triggerTags = {},
+		obtainTags = { "Crafted" },
+		unlockTags = { "Blueprint" },
+		stackTags = "Upgradeable",
+		requiredMaterials = "",
+		classTagMatch = "TRUE",
+		implementationTier = "A",
+		mvpPriority = "Medium",
+		blueprintId = "old_shield_emblem",
+		craftCost = {
+			blueprintProgressMin = 1,
+			materials = {},
+		},
+		isCraftable = true,
+		isStartingEligible = false,
+		isRunChestEligible = false,
+		isPermanentUnlockable = true,
+		modifiers = {
+			{
+				kind = "stat",
+				targetTags = {
+					weaponTag = "ss",
+					attackTag = "sweep",
+				},
+				stat = "sweepBaseDamage",
+				operation = "mul",
+				value = 1.10,
+				requiresTuning = false,
+				notes = "7C-1: RelicData SweepDamageMul 1.10 parity.",
+			},
+		},
+		notes = "7C-1 migrated from RelicData; not in Phase3RelicPool (starting loadout only).",
+	},
+	knights_belt = {
+		id = "knights_belt",
+		sourceRow = 19,
+		label = "Knight's Belt",
+		relicGroup = "Weapon-based relic (무기 유물)",
+		description = "SwordShield 공격 간격 ×0.80 (RelicData 7C-1 migrate)",
+		classTags = { "Guardian" },
+		effectTargetTags = { "ss" },
+		modifierTags = { "Cooldown" },
+		triggerTags = {},
+		obtainTags = { "Crafted" },
+		unlockTags = { "Blueprint" },
+		stackTags = "Upgradeable",
+		requiredMaterials = "",
+		classTagMatch = "TRUE",
+		implementationTier = "A",
+		mvpPriority = "Medium",
+		blueprintId = "knights_belt",
+		craftCost = {
+			blueprintProgressMin = 1,
+			materials = {},
+		},
+		isCraftable = true,
+		isStartingEligible = false,
+		isRunChestEligible = false,
+		isPermanentUnlockable = true,
+		modifiers = {
+			{
+				kind = "stat",
+				targetTags = {
+					weaponTag = "ss",
+				},
+				stat = "attackIntervalSeconds",
+				operation = "mul",
+				value = 0.80,
+				requiresTuning = false,
+				notes = "7C-1: RelicData AttackIntervalMul 0.80 parity.",
+			},
+		},
+		notes = "7C-1 migrated from RelicData; not in Phase3RelicPool (starting loadout only).",
 	},
 }
 

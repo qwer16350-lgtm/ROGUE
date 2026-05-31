@@ -6,8 +6,11 @@ local RunWeaponResolver = require(Shared:WaitForChild("RunWeaponResolver"))
 local RunContext = require(script.Parent:WaitForChild("Run"):WaitForChild("RunContext"))
 local UpgradeOfferBuilder = require(script.Parent:WaitForChild("Progression"):WaitForChild("UpgradeOfferBuilder"))
 local WeaponProgression = require(script.Parent:WaitForChild("Progression"):WaitForChild("WeaponProgression"))
+local RelicProfilePersistence = require(script.Parent:WaitForChild("RelicProfilePersistence"))
 
 local progressByPlayer = {}
+local ownedRelicIdsByUserId: { [number]: { string } } = {}
+local warnedChestOwnedResolveByUserId: { [number]: boolean } = {}
 local levelUpChoiceEvent = nil
 local gameConfigRef = nil
 local immediateHudPush = nil
@@ -31,7 +34,6 @@ local function debugProgression(...)
 	end
 end
 
-local relicDataModule = nil
 local weaponPickupNotifyEvent: RemoteEvent? = nil
 local HEALTH_UPGRADE_ID = "ab_Health_increase"
 local HEALTH_UPGRADE_BONUS_PER_STACK = 20
@@ -42,30 +44,6 @@ local SPEED_UPGRADE_MUL_PER_STACK = 0.03
 local MAGNET_RANGE_UPGRADE_ID = "mg_Range_increase"
 local HEALTH_ORB_AMOUNT_UPGRADE_ID = "ho_Amount_increase"
 local HEALTH_ORB_CHANCE_UPGRADE_ID = "ho_Chance_increase"
-
-local function resolveStartingRelicIdFromRunContext(): string?
-	if not relicDataModule then
-		return nil
-	end
-	if type(RunContext) ~= "table" or type(RunContext.getStartingRelicId) ~= "function" then
-		return nil
-	end
-	local relicId = RunContext.getStartingRelicId()
-	if type(relicId) ~= "string" or relicId == "" then
-		return nil
-	end
-	local choices = relicDataModule.getStartingRelicChoices and relicDataModule.getStartingRelicChoices() or nil
-	if type(choices) ~= "table" then
-		return nil
-	end
-	for _, row in ipairs(choices) do
-		if type(row) == "table" and row.Id == relicId then
-			return relicId
-		end
-	end
-	warn(string.format("[Progression] invalid startingRelicId from RunContext ignored: %s", tostring(relicId)))
-	return nil
-end
 
 local function fireWeaponPickupNotify(player: Player, kind: string)
 	if weaponPickupNotifyEvent then
@@ -137,8 +115,30 @@ function ProgressionService.getActiveWeaponIdsForPhase3Offer(player): { string }
 	return {}
 end
 
---- nil = legacy (Phase3RelicPool treats all static pool as owned). table (incl. {}) = strict session owned.
-function ProgressionService.getSessionOwnedRelicIdsForChest(_player: Player): { string }?
+--- Always returns a table (never nil). {} = strict empty owned. Debug.Phase3FakeOwnedRelicIds overrides real profile.
+local function warnChestOwnedResolveOnce(userId: number, message: string)
+	if warnedChestOwnedResolveByUserId[userId] then
+		return
+	end
+	warnedChestOwnedResolveByUserId[userId] = true
+	warn(string.format("[ProgressionService] chest owned resolve uid=%d %s", userId, message))
+end
+
+local function buildOwnedRelicIdListFromProfile(profile: any): { string }
+	local out: { string } = {}
+	if type(profile) ~= "table" or type(profile.ownedRelics) ~= "table" then
+		return out
+	end
+	for relicId, owned in pairs(profile.ownedRelics) do
+		if type(relicId) == "string" and relicId ~= "" and owned == true then
+			table.insert(out, relicId)
+		end
+	end
+	table.sort(out)
+	return out
+end
+
+local function getFakeOwnedRelicIdsFromDebug(): { string }?
 	local dbg = gameConfigRef and gameConfigRef.Debug
 	if type(dbg) ~= "table" then
 		return nil
@@ -148,6 +148,63 @@ function ProgressionService.getSessionOwnedRelicIdsForChest(_player: Player): { 
 	end
 	local src = dbg.Phase3FakeOwnedRelicIds
 	if type(src) ~= "table" then
+		return {}
+	end
+	local out: { string } = {}
+	for _, relicId in ipairs(src) do
+		if type(relicId) == "string" and relicId ~= "" then
+			table.insert(out, relicId)
+		end
+	end
+	return out
+end
+
+local function resolveRealOwnedRelicIdsForChest(userId: number): { string }
+	local cached = ownedRelicIdsByUserId[userId]
+	if cached ~= nil then
+		return cached
+	end
+
+	local empty: { string } = {}
+	if not RelicProfilePersistence.isEnabled() then
+		warnChestOwnedResolveOnce(userId, "RelicProfilePersistence disabled — chest owned=empty")
+		ownedRelicIdsByUserId[userId] = empty
+		return empty
+	end
+
+	local profile, loadErr = RelicProfilePersistence.loadProfile(userId)
+	if not profile then
+		warnChestOwnedResolveOnce(userId, string.format("load failed (%s) — chest owned=empty", tostring(loadErr)))
+		ownedRelicIdsByUserId[userId] = empty
+		return empty
+	end
+
+	local out = buildOwnedRelicIdListFromProfile(profile)
+	ownedRelicIdsByUserId[userId] = out
+	return out
+end
+
+function ProgressionService.getSessionOwnedRelicIdsForChest(player: Player): { string }
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return {}
+	end
+
+	local fakeOwned = getFakeOwnedRelicIdsFromDebug()
+	if fakeOwned ~= nil then
+		return fakeOwned
+	end
+
+	return resolveRealOwnedRelicIdsForChest(player.UserId)
+end
+
+--- nil / {} → no override (use RunContext). non-empty → chest exclude debug only.
+local function getDebugEquippedStartingOverride(): { string }?
+	local dbg = gameConfigRef and gameConfigRef.Debug
+	if type(dbg) ~= "table" then
+		return nil
+	end
+	local src = dbg.Phase3FakeEquippedStartingRelicIds
+	if type(src) ~= "table" then
 		return nil
 	end
 	local out: { string } = {}
@@ -156,36 +213,63 @@ function ProgressionService.getSessionOwnedRelicIdsForChest(_player: Player): { 
 			table.insert(out, relicId)
 		end
 	end
+	if #out == 0 then
+		return nil
+	end
 	return out
 end
 
-function ProgressionService.getFakeEquippedStartingRelicIdsForChest(_player: Player): { string }
-	local out: { string } = {}
-	local dbg = gameConfigRef and gameConfigRef.Debug
-	if type(dbg) ~= "table" then
-		return out
+local function getEquippedStartingRelicIdsFromRunContext(): { string }
+	if type(RunContext.isInitialized) ~= "function" or not RunContext.isInitialized() then
+		return {}
 	end
-	local src = dbg.Phase3FakeEquippedStartingRelicIds
-	if type(src) ~= "table" then
-		return out
+	if type(RunContext.getEquippedStartingRelicIds) ~= "function" then
+		return {}
 	end
-	for _, relicId in ipairs(src) do
-		if type(relicId) == "string" and relicId ~= "" then
-			table.insert(out, relicId)
+	return RunContext.getEquippedStartingRelicIds()
+end
+
+function ProgressionService.getEquippedStartingRelicIdsForChest(_player: Player): { string }
+	local override = getDebugEquippedStartingOverride()
+	if override ~= nil then
+		return override
+	end
+	return getEquippedStartingRelicIdsFromRunContext()
+end
+
+function ProgressionService.trySeedEquippedStartingRelicsFromRunContext(player: Player)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	if type(RunContext.isInitialized) ~= "function" or not RunContext.isInitialized() then
+		return
+	end
+	local state = progressByPlayer[player]
+	if not state then
+		return
+	end
+	if state.equippedStartingSeeded == true then
+		return
+	end
+	state.equippedStartingSeeded = true
+
+	local equippedIds = getEquippedStartingRelicIdsFromRunContext()
+	for _, relicId in ipairs(equippedIds) do
+		if type(relicDefinitionsModule) == "table" and relicDefinitionsModule.getDefinition(relicId) ~= nil then
+			ProgressionService.addPhase3Relic(player, relicId)
 		end
 	end
-	return out
 end
 
 function ProgressionService.buildPhase3RelicOfferFilters(player: Player): {
-	sessionOwnedRelicIds: { string }?,
+	sessionOwnedRelicIds: { string },
 	equippedStartingRelicIds: { string },
 	activeRelicIds: { string },
 	requireRunChestEligible: boolean,
 }
 	return {
 		sessionOwnedRelicIds = ProgressionService.getSessionOwnedRelicIdsForChest(player),
-		equippedStartingRelicIds = ProgressionService.getFakeEquippedStartingRelicIdsForChest(player),
+		equippedStartingRelicIds = ProgressionService.getEquippedStartingRelicIdsForChest(player),
 		activeRelicIds = ProgressionService.getPhase3ActiveRelicIds(player),
 		requireRunChestEligible = true,
 	}
@@ -494,11 +578,10 @@ local function buildOfferForPlayer(player): ({ { Id: string, Label: string } }, 
 		poolWeaponId = RunWeaponResolver.resolveEffectiveWeaponId(gameConfigRef)
 	end
 
-	local relicId = st and st.startingRelicId or nil
-local activeWeapons = st and st.activeWeapons or nil
-return UpgradeOfferBuilder.buildUpgradeOffer(poolWeaponId, relicId, upgradeData, relicDataModule, {
-	activeWeapons = activeWeapons,
-})
+	local activeWeapons = st and st.activeWeapons or nil
+	return UpgradeOfferBuilder.buildUpgradeOffer(poolWeaponId, upgradeData, {
+		activeWeapons = activeWeapons,
+	})
 end
 
 local function flushUpgradeOfferQueue(player: Player)
@@ -591,7 +674,6 @@ local function sanitizeBasicMagicRelicState(player: Player, s)
 	if s.weaponId ~= "BasicMagic" then
 		return
 	end
-	s.startingRelicId = nil
 	s.phase3RelicOfferPending = false
 	s.phase3RelicOfferChoices = nil
 	pendingStartingWeaponByPlayer[player] = nil
@@ -614,7 +696,6 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 	local shared = replicatedStorage:WaitForChild("Shared")
 	local upgradeData = require(shared:WaitForChild("UpgradeData"))
 	local weaponProfiles = require(shared:WaitForChild("WeaponProfiles"))
-	relicDataModule = require(shared:WaitForChild("RelicData"))
 	relicDefinitionsModule = require(shared:WaitForChild("RelicDefinitions"))
 	phase3RelicPoolModule = require(shared:WaitForChild("Phase3RelicPool"))
 	upgradeDataModule = upgradeData
@@ -793,7 +874,6 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 				gameConfigRef,
 				weaponProfiles.SwordShield,
 				u,
-				state.startingRelicId,
 				state.weaponGrade,
 				ProgressionService.getPhase3ActiveRelicIds(player)
 			)
@@ -859,12 +939,12 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 				level = 1,
 				xp = 0,
 				upgrades = newUpgradeTable(),
-				startingRelicId = nil,
 				weaponId = eff,
 				weaponGrade = "Normal",
 				activeWeapons = {},
 				upgradeOfferQueue = {},
 				phase3ActiveRelicIds = copyPhase3TestRelicIdsFromConfig(),
+				equippedStartingSeeded = false,
 				phase3RelicOfferPending = false,
 				phase3RelicOfferChoices = nil,
 			}
@@ -881,6 +961,9 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 			if s.phase3ActiveRelicIds == nil then
 				s.phase3ActiveRelicIds = copyPhase3TestRelicIdsFromConfig()
 			end
+			if s.equippedStartingSeeded == nil then
+				s.equippedStartingSeeded = false
+			end
 			if s.phase3RelicOfferPending == nil then
 				s.phase3RelicOfferPending = false
 			end
@@ -891,12 +974,6 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 		local finalState = progressByPlayer[player]
 
 		WeaponProgression.ensureWeaponFields(finalState, eff, hasOverride)
-		if finalState.startingRelicId == nil then
-			local runCtxRelicId = resolveStartingRelicIdFromRunContext()
-			if type(runCtxRelicId) == "string" and runCtxRelicId ~= "" then
-				finalState.startingRelicId = runCtxRelicId
-			end
-		end
 		syncXpUpgradeStackAttribute(player, finalState)
 		syncHealthUpgradeStackAttribute(player, finalState)
 		syncSpeedUpgradeStackAttribute(player, finalState)
@@ -905,6 +982,7 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 		syncHealthOrbChanceUpgradeStackAttribute(player, finalState)
 
 		sanitizeBasicMagicRelicState(player, finalState)
+		ProgressionService.trySeedEquippedStartingRelicsFromRunContext(player)
 		return finalState
 	end
 
@@ -913,10 +991,13 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 	end)
 
 	players.PlayerRemoving:Connect(function(player)
+		local uid = player.UserId
 		progressByPlayer[player] = nil
 		pendingLevelUpOfferByPlayer[player] = nil
 		pendingStartingWeaponByPlayer[player] = nil
 		pendingPhase3RelicByPlayer[player] = nil
+		ownedRelicIdsByUserId[uid] = nil
+		warnedChestOwnedResolveByUserId[uid] = nil
 	end)
 
 	for _, player in players:GetPlayers() do
@@ -1020,14 +1101,6 @@ function ProgressionService.addExperience(player, amount)
 			immediateHudPush(player)
 		end
 	end
-end
-
-function ProgressionService.getStartingRelicId(player): string?
-	local state = progressByPlayer[player]
-	if not state then
-		return nil
-	end
-	return state.startingRelicId
 end
 
 function ProgressionService.hasPhase3Relic(player, relicId: string): boolean

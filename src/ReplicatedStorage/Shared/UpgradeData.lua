@@ -1,4 +1,3 @@
-local RelicData = require(script.Parent:WaitForChild("RelicData"))
 local RelicModifierApplicator = require(script.Parent:WaitForChild("RelicModifierApplicator"))
 
 local UpgradeData = {
@@ -166,11 +165,11 @@ function UpgradeData.getEffectiveCombatStats(gameConfig, upgrades)
 	}
 end
 
+--- SwordShield effective stats: upgrades + phase3RelicIds (RelicModifierApplicator). No RelicData (7C-2).
 function UpgradeData.getSwordShieldEffectiveCombat(
 	gameConfig,
 	weaponProfile,
 	upgrades,
-	startingRelicId: string?,
 	weaponGrade: string?,
 	phase3RelicIds: { string }?
 )
@@ -190,12 +189,6 @@ function UpgradeData.getSwordShieldEffectiveCombat(
 
 	local sweepBaseDamage = sweepBase.BaseDamage
 	local thrustBaseDamage = thrustBase.BaseDamage
-
-	local m = RelicData.getCombatMultipliers(startingRelicId)
-	sweepBaseDamage *= m.SweepDamageMul
-	thrustBaseDamage *= m.ThrustDamageMul
-	baseAttackIntervalSeconds *= m.AttackIntervalMul
-	baseAttackIntervalSeconds = math.max(minInterval, baseAttackIntervalSeconds)
 
 	local gradeRow = nil
 	local gm = weaponProfile.GradeMultipliers

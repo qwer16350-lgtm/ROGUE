@@ -132,9 +132,11 @@ local function formatDevCombat(dc)
 	local isSword = weaponId == "SwordShield"
 	if isBasic then
 		table.insert(lines, "(BasicMagic 런 — 유물 미표시)")
-		table.insert(lines, "StartingRelicId: -")
 	else
-		table.insert(lines, string.format("StartingRelicId: %s", strRelic(dc.StartingRelicId)))
+		table.insert(
+			lines,
+			string.format("Phase3ActiveRelicIds: %s", formatPhase3RelicIdsLine(dc.Phase3ActiveRelicIds))
+		)
 	end
 	table.insert(lines, "--- upgrades (ss_*) ---")
 	for _, k in ipairs(SS_KEYS_ORDERED) do

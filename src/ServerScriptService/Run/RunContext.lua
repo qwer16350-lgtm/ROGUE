@@ -19,9 +19,24 @@ local state = {
 	maxFloor = nil,
 	lobbyPlaceId = nil,
 	stagePlaceId = nil,
-	startingRelicId = nil,
+	equippedStartingRelicIds = {},
 	members = {},
 }
+
+local function copyEquippedRelicIdList(src: any): { string }
+	local out: { string } = {}
+	if type(src) ~= "table" then
+		return out
+	end
+	local seen: { [string]: boolean } = {}
+	for _, relicId in ipairs(src) do
+		if type(relicId) == "string" and relicId ~= "" and not seen[relicId] then
+			seen[relicId] = true
+			table.insert(out, relicId)
+		end
+	end
+	return out
+end
 
 local function readTeleportData(player)
 	local ok, joinData = pcall(function()
@@ -43,10 +58,7 @@ local function applyFromTd(td)
 	state.maxFloor = td[k.MaxFloor] or RunConstants.MaxFloor
 	state.lobbyPlaceId = td[k.LobbyPlaceId] or RunConstants.LobbyPlaceId
 	state.stagePlaceId = td[k.StagePlaceId] or RunConstants.StagePlaceId
-	local startingRelicId = td[k.StartingRelicId]
-	if type(startingRelicId) == "string" and startingRelicId ~= "" then
-		state.startingRelicId = startingRelicId
-	end
+	state.equippedStartingRelicIds = copyEquippedRelicIdList(td[k.EquippedStartingRelicIds])
 end
 
 local function applyDefaults()
@@ -58,7 +70,7 @@ local function applyDefaults()
 	state.maxFloor = RunConstants.MaxFloor
 	state.lobbyPlaceId = RunConstants.LobbyPlaceId
 	state.stagePlaceId = RunConstants.StagePlaceId
-	state.startingRelicId = nil
+	state.equippedStartingRelicIds = {}
 end
 
 ---
@@ -125,8 +137,8 @@ function RunContext.getMembers()
 	return state.members
 end
 
-function RunContext.getStartingRelicId()
-	return state.startingRelicId
+function RunContext.getEquippedStartingRelicIds(): { string }
+	return copyEquippedRelicIdList(state.equippedStartingRelicIds)
 end
 
 return RunContext

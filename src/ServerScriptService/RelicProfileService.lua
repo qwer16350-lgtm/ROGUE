@@ -105,6 +105,11 @@ local function getRelicStartingSlotMax(): number
 	return 1
 end
 
+local function shouldSkipCraftRequirements(): boolean
+	local dbg = gameConfigRef and gameConfigRef.Debug
+	return type(dbg) == "table" and dbg.RelicCraftSkipRequirements == true
+end
+
 function RelicProfileService.getDefaultProfile(): any
 	return {
 		version = 1,
@@ -348,18 +353,20 @@ function RelicProfileService.canCraftRelic(profile: any, relicId: string): (bool
 			materialsRequired = craftCost.materials
 		end
 	end
-	local progress = profile.blueprintProgress[blueprintId]
-	if type(progress) ~= "number" then
-		progress = 0
-	end
-	if progress < bpm then
-		return false, "NOT_ENOUGH_BLUEPRINT"
-	end
-	for matKey, required in pairs(materialsRequired) do
-		if type(matKey) == "string" and type(required) == "number" and required > 0 then
-			local have = profile.materials[matKey]
-			if type(have) ~= "number" or have < required then
-				return false, "NOT_ENOUGH_MATERIALS"
+	if not shouldSkipCraftRequirements() then
+		local progress = profile.blueprintProgress[blueprintId]
+		if type(progress) ~= "number" then
+			progress = 0
+		end
+		if progress < bpm then
+			return false, "NOT_ENOUGH_BLUEPRINT"
+		end
+		for matKey, required in pairs(materialsRequired) do
+			if type(matKey) == "string" and type(required) == "number" and required > 0 then
+				local have = profile.materials[matKey]
+				if type(have) ~= "number" or have < required then
+					return false, "NOT_ENOUGH_MATERIALS"
+				end
 			end
 		end
 	end
@@ -405,7 +412,9 @@ function RelicProfileService.craftRelic(player: Player, relicId: any): any
 	if type(def) ~= "table" then
 		return { ok = false, reason = "UNKNOWN_RELIC" }
 	end
-	deductCraftMaterials(profile, def)
+	if not shouldSkipCraftRequirements() then
+		deductCraftMaterials(profile, def)
+	end
 	profile.ownedRelics[relicId] = true
 	tryImmediateSave(player, profile)
 	return {
@@ -441,9 +450,6 @@ function RelicProfileService.canEquipStartingRelics(profile: any, relicIds: any)
 		end
 		if profile.ownedRelics[relicId] ~= true then
 			return false, "NOT_OWNED"
-		end
-		if def.isStartingEligible ~= true then
-			return false, "NOT_STARTING_ELIGIBLE"
 		end
 	end
 	return true, nil

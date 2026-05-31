@@ -385,14 +385,12 @@ function CombatService.init(
 	local function heartbeatSwordShieldWeapon(player: Player, weaponId: string, root: BasePart, entries, now: number)
 		local profile = weaponProfiles.SwordShield
 		local upgrades = progressionService.getUpgradeCounts(player)
-		local relicId = progressionService.getStartingRelicId(player)
 		local weaponGrade = progressionService.getWeaponGradeFor(player, weaponId)
 		local phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player)
 		local eff = upgradeData.getSwordShieldEffectiveCombat(
 			gameConfig,
 			profile,
 			upgrades,
-			relicId,
 			weaponGrade,
 			phase3RelicIds
 		)

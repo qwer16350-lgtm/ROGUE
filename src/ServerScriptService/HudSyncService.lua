@@ -32,7 +32,7 @@ local function buildDevCombat(player, progressionService, gameConfig)
 	if type(upgrades) ~= "table" then
 		upgrades = {}
 	end
-	local startingRelicId = progressionService.getStartingRelicId(player)
+	local phase3ActiveRelicIds = progressionService.getPhase3ActiveRelicIds(player)
 	local weaponGrade = progressionService.getWeaponGrade(player)
 	local activeWeaponsMap = progressionService.getActiveWeapons(player)
 	local activeWeaponsList = {}
@@ -58,7 +58,7 @@ local function buildDevCombat(player, progressionService, gameConfig)
 		WeaponId = weaponId,
 		WeaponGrade = weaponGrade,
 		ActiveWeapons = activeWeaponsList,
-		StartingRelicId = startingRelicId,
+		Phase3ActiveRelicIds = phase3ActiveRelicIds,
 		Run = {
 			DefaultWeaponId = gameConfig.Run and gameConfig.Run.DefaultWeaponId,
 		},
@@ -87,14 +87,12 @@ local function buildDevCombat(player, progressionService, gameConfig)
 	end
 
 	if weaponId == "SwordShield" then
-		local phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player)
 		dc.SwordShieldEffective = UpgradeData.getSwordShieldEffectiveCombat(
 			gameConfig,
 			WeaponProfiles.SwordShield,
 			upgrades,
-			startingRelicId,
 			weaponGrade,
-			phase3RelicIds
+			phase3ActiveRelicIds
 		)
 	elseif weaponId == "BasicMagic" then
 		dc.BasicMagicEffective = UpgradeData.getEffectiveCombatStats(gameConfig, upgrades)

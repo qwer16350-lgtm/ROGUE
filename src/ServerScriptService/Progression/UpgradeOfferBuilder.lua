@@ -216,21 +216,13 @@ local function weightForChoice(choice: { Id: string, Label: string }, weightsMap
 end
 
 function UpgradeOfferBuilder.weightedPickThreeSwordShieldChoices(
-	pool: { { Id: string, Label: string } },
-	startingRelicId: string?,
-	relicDataModule: { getSwordShieldUpgradePickWeights: (string?) -> { [string]: number } }?
+	pool: { { Id: string, Label: string } }
 ): { { Id: string, Label: string } }
 	local n = #pool
 	if n < 3 then
 		error("[UpgradeOfferBuilder] level-up choice pool must have at least 3 entries")
 	end
 	local weightsMap: { [string]: number } = {}
-	if relicDataModule then
-		weightsMap = relicDataModule.getSwordShieldUpgradePickWeights(startingRelicId)
-	end
-	if type(weightsMap) ~= "table" then
-		weightsMap = {}
-	end
 
 	local remaining = {}
 	for i = 1, n do
@@ -274,9 +266,7 @@ end
 
 function UpgradeOfferBuilder.buildUpgradeOffer(
 	poolWeaponId: string,
-	startingRelicId: string?,
 	upgradeData: any,
-	relicDataModule: { getSwordShieldUpgradePickWeights: (string?) -> { [string]: number } }?,
 	options: any?
 ): ({ { Id: string, Label: string } }, { [string]: boolean })
 	local activeWeapons = nil
@@ -293,11 +283,7 @@ function UpgradeOfferBuilder.buildUpgradeOffer(
 		appendTwoHandedSwordChoicesIfOwned(pool, upgradeData, activeWeapons)
 		appendAttackTypeCommonChoicesIfEligible(pool, upgradeData, activeWeapons)
 		appendPlayerSystemCommonChoices(pool, upgradeData)
-		local picked = UpgradeOfferBuilder.weightedPickThreeSwordShieldChoices(
-			pool,
-			startingRelicId,
-			relicDataModule
-		)
+		local picked = UpgradeOfferBuilder.weightedPickThreeSwordShieldChoices(pool)
 		local allowed = {}
 		for _, row in ipairs(picked) do
 			allowed[row.Id] = true

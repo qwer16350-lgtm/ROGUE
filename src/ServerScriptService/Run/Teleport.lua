@@ -6,8 +6,29 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunConstants = require(
 	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Run"):WaitForChild("RunConstants")
 )
+local GameConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameConfig"))
 
 local Teleport = {}
+
+local function normalizeEquippedRelicIds(relicIds: any): { string }
+	local slotMax = type(GameConfig.RelicStartingSlotMax) == "number" and GameConfig.RelicStartingSlotMax or 1
+	slotMax = math.max(0, math.floor(slotMax + 0.5))
+	local out: { string } = {}
+	if type(relicIds) ~= "table" or slotMax == 0 then
+		return out
+	end
+	local seen: { [string]: boolean } = {}
+	for _, relicId in ipairs(relicIds) do
+		if type(relicId) == "string" and relicId ~= "" and not seen[relicId] then
+			seen[relicId] = true
+			table.insert(out, relicId)
+			if #out >= slotMax then
+				break
+			end
+		end
+	end
+	return out
+end
 
 local function asArray(playerOrPlayers)
 	if type(playerOrPlayers) ~= "table" then
@@ -31,9 +52,9 @@ local function buildTeleportData(args)
 		[k.LobbyPlaceId] = args.lobbyPlaceId,
 		[k.StagePlaceId] = args.stagePlaceId,
 	}
-	local startingRelicId = args.startingRelicId
-	if type(startingRelicId) == "string" and startingRelicId ~= "" then
-		payload[k.StartingRelicId] = startingRelicId
+	local equipped = normalizeEquippedRelicIds(args.equippedStartingRelicIds)
+	if #equipped > 0 then
+		payload[k.EquippedStartingRelicIds] = equipped
 	end
 	return payload
 end
@@ -85,7 +106,7 @@ function Teleport.toFirstFloor(playerOrPlayers, opts)
 		maxFloor = RunConstants.MaxFloor,
 		lobbyPlaceId = RunConstants.LobbyPlaceId,
 		stagePlaceId = stagePlaceId,
-		startingRelicId = opts.startingRelicId,
+		equippedStartingRelicIds = opts.equippedStartingRelicIds,
 	})
 
 	local options = Instance.new("TeleportOptions")
@@ -122,7 +143,7 @@ function Teleport.toFloor(playerOrPlayers, runContext, floorIndex)
 		maxFloor = runContext.getMaxFloor(),
 		lobbyPlaceId = runContext.getLobbyPlaceId(),
 		stagePlaceId = stagePlaceId,
-		startingRelicId = runContext.getStartingRelicId and runContext.getStartingRelicId() or nil,
+		equippedStartingRelicIds = runContext.getEquippedStartingRelicIds and runContext.getEquippedStartingRelicIds() or nil,
 	})
 
 	local options = Instance.new("TeleportOptions")
