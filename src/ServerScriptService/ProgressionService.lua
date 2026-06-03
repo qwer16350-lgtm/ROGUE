@@ -7,6 +7,13 @@ local RunContext = require(script.Parent:WaitForChild("Run"):WaitForChild("RunCo
 local UpgradeOfferBuilder = require(script.Parent:WaitForChild("Progression"):WaitForChild("UpgradeOfferBuilder"))
 local WeaponProgression = require(script.Parent:WaitForChild("Progression"):WaitForChild("WeaponProgression"))
 local RelicProfilePersistence = require(script.Parent:WaitForChild("RelicProfilePersistence"))
+local BuildTagService = require(script.Parent:WaitForChild("BuildTagService"))
+local ClassEffectData = require(Shared:WaitForChild("ClassEffectData"))
+local BlockChanceResolver = require(Shared:WaitForChild("BlockChanceResolver"))
+
+local DAMAGE_TAKEN_MULTIPLIER_ATTR = "damageTakenMultiplier"
+local BLOCK_CAPABLE_ATTR = "blockCapable"
+local EFFECTIVE_BLOCK_CHANCE_ATTR = "effectiveBlockChance"
 
 local progressByPlayer = {}
 local ownedRelicIdsByUserId: { [number]: { string } } = {}
@@ -167,14 +174,14 @@ local function resolveRealOwnedRelicIdsForChest(userId: number): { string }
 
 	local empty: { string } = {}
 	if not RelicProfilePersistence.isEnabled() then
-		warnChestOwnedResolveOnce(userId, "RelicProfilePersistence disabled — chest owned=empty")
+		warnChestOwnedResolveOnce(userId, "RelicProfilePersistence disabled ??chest owned=empty")
 		ownedRelicIdsByUserId[userId] = empty
 		return empty
 	end
 
 	local profile, loadErr = RelicProfilePersistence.loadProfile(userId)
 	if not profile then
-		warnChestOwnedResolveOnce(userId, string.format("load failed (%s) — chest owned=empty", tostring(loadErr)))
+		warnChestOwnedResolveOnce(userId, string.format("load failed (%s) ??chest owned=empty", tostring(loadErr)))
 		ownedRelicIdsByUserId[userId] = empty
 		return empty
 	end
@@ -197,7 +204,20 @@ function ProgressionService.getSessionOwnedRelicIdsForChest(player: Player): { s
 	return resolveRealOwnedRelicIdsForChest(player.UserId)
 end
 
---- nil / {} → no override (use RunContext). non-empty → chest exclude debug only.
+--- Real profile owned set only (never Phase3FakeOwnedRelicIds). For blueprint drop candidate filter.
+function ProgressionService.getOwnedRelicIdSetForBlueprintDrop(player: Player): { [string]: boolean }
+	local set: { [string]: boolean } = {}
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return set
+	end
+	for _, relicId in ipairs(resolveRealOwnedRelicIdsForChest(player.UserId)) do
+		set[relicId] = true
+	end
+	return set
+end
+
+
+--- nil / {} ??no override (use RunContext). non-empty ??chest exclude debug only.
 local function getDebugEquippedStartingOverride(): { string }?
 	local dbg = gameConfigRef and gameConfigRef.Debug
 	if type(dbg) ~= "table" then
@@ -304,6 +324,47 @@ function ProgressionService.getPhase3ActiveRelicIds(player): { string }
 	return out
 end
 
+function ProgressionService.getBuildSnapshot(player: Player)
+	return BuildTagService.computeBuildSnapshot({
+		activeWeapons = ProgressionService.getActiveWeapons(player),
+		phase3RelicIds = ProgressionService.getPhase3ActiveRelicIds(player),
+		primaryWeaponId = ProgressionService.getWeaponId(player),
+	})
+end
+
+function ProgressionService.getDetectedClass(player: Player): string?
+	local snap = ProgressionService.getBuildSnapshot(player)
+	if type(snap) ~= "table" then
+		return nil
+	end
+	return snap.DetectedClass
+end
+
+function ProgressionService.syncClassEffectPlayerAttributes(player: Player)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	local mul = ClassEffectData.DefaultDamageTakenMultiplier
+	if ProgressionService.getDetectedClass(player) == "Guardian" then
+		mul = ClassEffectData.GuardianDamageTakenMultiplier
+	end
+	player:SetAttribute(DAMAGE_TAKEN_MULTIPLIER_ATTR, mul)
+end
+
+function ProgressionService.syncBlockDefenseAttributes(player: Player)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	local resolved = BlockChanceResolver.resolve({
+		activeWeapons = ProgressionService.getActiveWeapons(player),
+		primaryWeaponId = ProgressionService.getWeaponId(player),
+		phase3ActiveRelicIds = ProgressionService.getPhase3ActiveRelicIds(player),
+		gameConfig = gameConfigRef,
+	})
+	player:SetAttribute(BLOCK_CAPABLE_ATTR, resolved.blockCapable == true)
+	player:SetAttribute(EFFECTIVE_BLOCK_CHANCE_ATTR, resolved.effectiveBlockChance)
+end
+
 function ProgressionService.tryApplyWeaponDropPickup(player, weaponIdFromDrop: string): boolean
 	local state = progressByPlayer[player]
 	local function notify(kind: string)
@@ -316,7 +377,13 @@ function ProgressionService.tryApplyWeaponDropPickup(player, weaponIdFromDrop: s
 end
 
 function ProgressionService.setImmediateHudPush(callback)
-	immediateHudPush = callback
+	immediateHudPush = function(player)
+		ProgressionService.syncClassEffectPlayerAttributes(player)
+		ProgressionService.syncBlockDefenseAttributes(player)
+		if callback then
+			callback(player)
+		end
+	end
 end
 
 local function xpRequiredForLevel(level)
@@ -689,7 +756,7 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 		if wpn and wpn:IsA("RemoteEvent") then
 			weaponPickupNotifyEvent = wpn
 		else
-			warn("[ProgressionService] Remotes.WeaponPickupNotify missing — weapon pickup notify disabled.")
+			warn("[ProgressionService] Remotes.WeaponPickupNotify missing ??weapon pickup notify disabled.")
 			weaponPickupNotifyEvent = nil
 		end
 	end
@@ -751,7 +818,7 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 			local st = progressByPlayer[player]
 			if not st then
 				pendingStartingWeaponByPlayer[player] = nil
-				warn(string.format("[Progression] StartingWeapon submit: rejected — no state (%s)", player.Name))
+				warn(string.format("[Progression] StartingWeapon submit: rejected ??no state (%s)", player.Name))
 				return
 			end
 			st.weaponId = choiceId
@@ -875,11 +942,12 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 				weaponProfiles.SwordShield,
 				u,
 				state.weaponGrade,
-				ProgressionService.getPhase3ActiveRelicIds(player)
+				ProgressionService.getPhase3ActiveRelicIds(player),
+				ProgressionService.getDetectedClass(player)
 			)
 			debugProgression(
 				string.format(
-					"[Progression] %s | SS 선택: %s | 간격 %.3fs | Sweep 피해 %.2f 각%.1f | Thrust 피해 %.2f 길이%.1f 폭%.1f",
+					"[Progression] %s | SS choice: %s | interval %.3fs | Sweep dmg %.2f angle %.1f | Thrust dmg %.2f range %.1f width %.1f",
 					player.Name,
 					choiceId,
 					eff.AttackIntervalSeconds,
@@ -894,7 +962,7 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 			local stats = upgradeData.getEffectiveCombatStats(gameConfigRef, u)
 			debugProgression(
 				string.format(
-					"[Progression] %s | 선택: %s | 스택 피해%d 공속%d 사거리%d | 결과 → 피해량 %d | 공격간격 %.3fs | 사거리 %.1f 스터드",
+					"[Progression] %s | choice: %s | pick dmg+%d atkSpd+%d size+%d | result dmg %d | interval %.3fs | range %.1f studs",
 					player.Name,
 					choiceId,
 					u.damage_up or 0,
@@ -988,6 +1056,12 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 
 	players.PlayerAdded:Connect(function(player)
 		ensureProgress(player)
+		ProgressionService.syncClassEffectPlayerAttributes(player)
+		ProgressionService.syncBlockDefenseAttributes(player)
+		player.CharacterAdded:Connect(function()
+			ProgressionService.syncClassEffectPlayerAttributes(player)
+			ProgressionService.syncBlockDefenseAttributes(player)
+		end)
 	end)
 
 	players.PlayerRemoving:Connect(function(player)
@@ -1002,6 +1076,12 @@ function ProgressionService.init(players, replicatedStorage, gameConfig)
 
 	for _, player in players:GetPlayers() do
 		ensureProgress(player)
+		ProgressionService.syncClassEffectPlayerAttributes(player)
+		ProgressionService.syncBlockDefenseAttributes(player)
+		player.CharacterAdded:Connect(function()
+			ProgressionService.syncClassEffectPlayerAttributes(player)
+			ProgressionService.syncBlockDefenseAttributes(player)
+		end)
 	end
 end
 

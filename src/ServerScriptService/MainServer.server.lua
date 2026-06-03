@@ -60,6 +60,7 @@ local function startStageBranch()
 	local CombatService = require(script.Parent:WaitForChild("CombatService"))
 	local ProgressionService = require(script.Parent:WaitForChild("ProgressionService"))
 	local WeaponDropService = require(script.Parent:WaitForChild("WeaponDropService"))
+	local BlueprintDiscoveryService = require(script.Parent:WaitForChild("BlueprintDiscoveryService"))
 	local RelicDropService = require(script.Parent:WaitForChild("RelicDropService"))
 	local XpPickupService = require(script.Parent:WaitForChild("XpPickupService"))
 	local HealthPickupService = require(script.Parent:WaitForChild("HealthPickupService"))
@@ -70,9 +71,10 @@ local function startStageBranch()
 	local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 
 	EnemyService.init(Players, RunService, GameConfig)
-	PlayerContactDamageService.init(Players, RunService, GameConfig, EnemyService)
 	ProgressionService.init(Players, ReplicatedStorage, GameConfig)
+	PlayerContactDamageService.init(Players, RunService, GameConfig, EnemyService)
 	WeaponDropService.init(Players, RunService, Workspace, ProgressionService)
+	BlueprintDiscoveryService.init(Players, GameConfig, ProgressionService, Remotes)
 	RelicDropService.init(Players, RunService, Workspace, ProgressionService)
 	XpPickupService.init(Players, RunService, ProgressionService, GameConfig)
 	HealthPickupService.init(Players, RunService, GameConfig)
@@ -85,13 +87,14 @@ local function startStageBranch()
 		players = Players,
 		progressionService = ProgressionService,
 		gameConfig = GameConfig,
+		blueprintDiscoveryService = BlueprintDiscoveryService,
 	})
 	ProgressionService.setImmediateHudPush(function(player)
 		HudSyncService.pushToPlayer(player, ProgressionService, WaveService, GameConfig)
 	end)
 	CombatService.init(
 		Players, RunService, GameConfig, EnemyService, ProgressionService,
-		XpPickupService, WaveService, HealthPickupService, WeaponDropService, RelicDropService
+		XpPickupService, WaveService, HealthPickupService, WeaponDropService, RelicDropService, BlueprintDiscoveryService
 	)
 
 	StageBootstrap.init({
@@ -115,8 +118,8 @@ elseif matchesPlace(placeId, RunConstants.StagePlaceId) then
 	startStageBranch()
 else
 	warn(string.format(
-		"[MainServer] 개발용 fallback — Unknown PlaceId=%d (LobbyPlaceId=%d, StagePlaceId=%d). " ..
-		"publish 후 RunConstants 의 두 PlaceId 를 실 ID 로 갱신하세요. 현재는 Stage 분기로 폴백합니다.",
+		"[MainServer] 揶쏆뮆而??fallback ??Unknown PlaceId=%d (LobbyPlaceId=%d, StagePlaceId=%d). " ..
+		"publish ??RunConstants ????PlaceId ????ID 嚥?揶쏄퉮???뤾쉭?? ?袁⑹삺??Stage ?브쑨由경에???媛??몃빍??",
 		placeId, RunConstants.LobbyPlaceId, RunConstants.StagePlaceId
 	))
 	startStageBranch()

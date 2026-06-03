@@ -105,14 +105,21 @@ local function formatClassScoresLine(scores: any): string
 	)
 end
 
+local DEV_COMBAT_COLUMN_WIDTH_PX = 300
+
+local function devCombatLinesToText(lines: { string }): string
+	return table.concat(lines, "\n")
+end
+
 local function formatDevCombat(dc)
 	if type(dc) ~= "table" then
-		return "[DevCombat]\n(invalid)"
+		return { left = "[DevCombat]\n(invalid)", right = "" }
 	end
-	local lines = {}
-	table.insert(lines, "[DevCombat]")
-	table.insert(lines, string.format("WeaponId: %s", fmtDevScalar(dc.WeaponId)))
-	table.insert(lines, string.format("WeaponGrade: %s", dc.WeaponGrade ~= nil and tostring(dc.WeaponGrade) or "-"))
+	local leftLines: { string } = {}
+	local rightLines: { string } = {}
+	table.insert(leftLines, "[DevCombat]")
+	table.insert(leftLines, string.format("WeaponId: %s", fmtDevScalar(dc.WeaponId)))
+	table.insert(leftLines, string.format("WeaponGrade: %s", dc.WeaponGrade ~= nil and tostring(dc.WeaponGrade) or "-"))
 	local aw = dc.ActiveWeapons
 	if type(aw) == "table" and #aw > 0 then
 		local chunks = {}
@@ -124,112 +131,130 @@ local function formatDevCombat(dc)
 			end
 		end
 		if #chunks > 0 then
-			table.insert(lines, string.format("ActiveWeapons: %s", table.concat(chunks, ", ")))
+			table.insert(leftLines, string.format("ActiveWeapons: %s", table.concat(chunks, ", ")))
 		end
 	end
 	local weaponId = dc.WeaponId
 	local isBasic = weaponId == "BasicMagic"
 	local isSword = weaponId == "SwordShield"
 	if isBasic then
-		table.insert(lines, "(BasicMagic 런 — 유물 미표시)")
+		table.insert(leftLines, "(BasicMagic 럼 — 유물 미표시)")
 	else
 		table.insert(
-			lines,
+			leftLines,
 			string.format("Phase3ActiveRelicIds: %s", formatPhase3RelicIdsLine(dc.Phase3ActiveRelicIds))
 		)
 	end
-	table.insert(lines, "--- upgrades (ss_*) ---")
+	table.insert(leftLines, "--- upgrades (ss_*) ---")
 	for _, k in ipairs(SS_KEYS_ORDERED) do
-		table.insert(lines, string.format("%s: %s", k, formatSsUpgrade(dc[k])))
+		table.insert(leftLines, string.format("%s: %s", k, formatSsUpgrade(dc[k])))
 	end
 	local hasAnyEffective = false
 	if isSword and type(dc.SwordShieldEffective) == "table" then
 		hasAnyEffective = true
 		local eff = dc.SwordShieldEffective
-		table.insert(lines, "--- SwordShieldEffective ---")
-		table.insert(lines, string.format("AttackIntervalSeconds: %s", fmtDevNum(eff.AttackIntervalSeconds)))
+		table.insert(leftLines, "--- SwordShieldEffective ---")
+		table.insert(leftLines, string.format("AttackIntervalSeconds: %s", fmtDevNum(eff.AttackIntervalSeconds)))
 		local sw = eff.Sweep
 		if type(sw) == "table" then
-			table.insert(lines, string.format("Sweep.BaseDamage: %s", fmtDevNum(sw.BaseDamage)))
-			table.insert(lines, string.format("Sweep.RangeStuds: %s", fmtDevNum(sw.RangeStuds)))
-			table.insert(lines, string.format("Sweep.AngleDeg: %s", fmtDevNum(sw.AngleDeg)))
+			table.insert(leftLines, string.format("Sweep.BaseDamage: %s", fmtDevNum(sw.BaseDamage)))
+			table.insert(leftLines, string.format("Sweep.RangeStuds: %s", fmtDevNum(sw.RangeStuds)))
+			table.insert(leftLines, string.format("Sweep.AngleDeg: %s", fmtDevNum(sw.AngleDeg)))
+			table.insert(leftLines, string.format("Sweep.KnockbackPower: %s", fmtDevNum(sw.KnockbackPower)))
 		end
 		local th = eff.Thrust
 		if type(th) == "table" then
-			table.insert(lines, string.format("Thrust.BaseDamage: %s", fmtDevNum(th.BaseDamage)))
-			table.insert(lines, string.format("Thrust.RangeStuds: %s", fmtDevNum(th.RangeStuds)))
-			table.insert(lines, string.format("Thrust.WidthStuds: %s", fmtDevNum(th.WidthStuds)))
+			table.insert(leftLines, string.format("Thrust.BaseDamage: %s", fmtDevNum(th.BaseDamage)))
+			table.insert(leftLines, string.format("Thrust.RangeStuds: %s", fmtDevNum(th.RangeStuds)))
+			table.insert(leftLines, string.format("Thrust.WidthStuds: %s", fmtDevNum(th.WidthStuds)))
 		end
 	end
 	if type(dc.BasicMagicEffective) == "table" then
 		hasAnyEffective = true
 		local bm = dc.BasicMagicEffective
-		table.insert(lines, "--- BasicMagicEffective ---")
-		table.insert(lines, string.format("damagePerHit: %s", fmtDevNum(bm.damagePerHit)))
-		table.insert(lines, string.format("attackIntervalSeconds: %s", fmtDevNum(bm.attackIntervalSeconds)))
-		table.insert(lines, string.format("attackRangeStuds: %s", fmtDevNum(bm.attackRangeStuds)))
+		table.insert(leftLines, "--- BasicMagicEffective ---")
+		table.insert(leftLines, string.format("damagePerHit: %s", fmtDevNum(bm.damagePerHit)))
+		table.insert(leftLines, string.format("attackIntervalSeconds: %s", fmtDevNum(bm.attackIntervalSeconds)))
+		table.insert(leftLines, string.format("attackRangeStuds: %s", fmtDevNum(bm.attackRangeStuds)))
 	end
 	if type(dc.SpearEffective) == "table" then
 		hasAnyEffective = true
 		local sp = dc.SpearEffective
-		table.insert(lines, "--- SpearEffective ---")
-		table.insert(lines, string.format("Grade: %s", fmtDevScalar(sp.Grade)))
-		table.insert(lines, string.format("BaseDamage: %s", fmtDevNum(sp.BaseDamage)))
-		table.insert(lines, string.format("AttackIntervalSeconds: %s", fmtDevNum(sp.AttackIntervalSeconds)))
-		table.insert(lines, string.format("RangeStuds: %s", fmtDevNum(sp.RangeStuds)))
-		table.insert(lines, string.format("WidthStuds: %s", fmtDevNum(sp.WidthStuds)))
-		table.insert(lines, string.format("TargetLimit: %s", fmtDevNum(sp.TargetLimit)))
-		table.insert(lines, string.format("sp_thrust_damage: %s", formatSsUpgrade(sp.sp_thrust_damage)))
-		table.insert(lines, string.format("sp_thrust_range: %s", formatSsUpgrade(sp.sp_thrust_range)))
+		table.insert(leftLines, "--- SpearEffective ---")
+		table.insert(leftLines, string.format("Grade: %s", fmtDevScalar(sp.Grade)))
+		table.insert(leftLines, string.format("BaseDamage: %s", fmtDevNum(sp.BaseDamage)))
+		table.insert(leftLines, string.format("AttackIntervalSeconds: %s", fmtDevNum(sp.AttackIntervalSeconds)))
+		table.insert(leftLines, string.format("RangeStuds: %s", fmtDevNum(sp.RangeStuds)))
+		table.insert(leftLines, string.format("WidthStuds: %s", fmtDevNum(sp.WidthStuds)))
+		table.insert(leftLines, string.format("TargetLimit: %s", fmtDevNum(sp.TargetLimit)))
+		table.insert(leftLines, string.format("sp_thrust_damage: %s", formatSsUpgrade(sp.sp_thrust_damage)))
+		table.insert(leftLines, string.format("sp_thrust_range: %s", formatSsUpgrade(sp.sp_thrust_range)))
 	end
 	if type(dc.TwoHandedSwordEffective) == "table" then
 		hasAnyEffective = true
 		local tw = dc.TwoHandedSwordEffective
-		table.insert(lines, "--- TwoHandedSwordEffective ---")
-		table.insert(lines, string.format("Grade: %s", fmtDevScalar(tw.Grade)))
-		table.insert(lines, string.format("BaseDamage: %s", fmtDevNum(tw.BaseDamage)))
-		table.insert(lines, string.format("AttackIntervalSeconds: %s", fmtDevNum(tw.AttackIntervalSeconds)))
-		table.insert(lines, string.format("RangeStuds: %s", fmtDevNum(tw.RangeStuds)))
-		table.insert(lines, string.format("AngleDeg: %s", fmtDevNum(tw.AngleDeg)))
-		table.insert(lines, string.format("TargetLimit: %s", fmtDevNum(tw.TargetLimit)))
-		table.insert(lines, string.format("th_sweep_damage: %s", formatSsUpgrade(tw.th_sweep_damage)))
-		table.insert(lines, string.format("th_sweep_range: %s", formatSsUpgrade(tw.th_sweep_range)))
+		table.insert(leftLines, "--- TwoHandedSwordEffective ---")
+		table.insert(leftLines, string.format("Grade: %s", fmtDevScalar(tw.Grade)))
+		table.insert(leftLines, string.format("BaseDamage: %s", fmtDevNum(tw.BaseDamage)))
+		table.insert(leftLines, string.format("AttackIntervalSeconds: %s", fmtDevNum(tw.AttackIntervalSeconds)))
+		table.insert(leftLines, string.format("RangeStuds: %s", fmtDevNum(tw.RangeStuds)))
+		table.insert(leftLines, string.format("AngleDeg: %s", fmtDevNum(tw.AngleDeg)))
+		table.insert(leftLines, string.format("TargetLimit: %s", fmtDevNum(tw.TargetLimit)))
+		table.insert(leftLines, string.format("th_sweep_damage: %s", formatSsUpgrade(tw.th_sweep_damage)))
+		table.insert(leftLines, string.format("th_sweep_range: %s", formatSsUpgrade(tw.th_sweep_range)))
 	end
 	if not hasAnyEffective then
-		table.insert(lines, "SwordShieldEffective: --")
-		table.insert(lines, "BasicMagicEffective: --")
-		table.insert(lines, "SpearEffective: --")
-		table.insert(lines, "TwoHandedSwordEffective: --")
+		table.insert(leftLines, "SwordShieldEffective: --")
+		table.insert(leftLines, "BasicMagicEffective: --")
+		table.insert(leftLines, "SpearEffective: --")
+		table.insert(leftLines, "TwoHandedSwordEffective: --")
 	end
 	local buildTag = dc.BuildTag
 	if type(buildTag) == "table" then
-		table.insert(lines, "--- BuildTag ---")
-		table.insert(lines, formatTagCountsLine(buildTag.TagCounts))
-		table.insert(lines, string.format("Phase3RelicIds: %s", formatPhase3RelicIdsLine(buildTag.Phase3RelicIds)))
+		table.insert(rightLines, "--- BuildTag ---")
+		table.insert(rightLines, formatTagCountsLine(buildTag.TagCounts))
+		table.insert(rightLines, string.format("Phase3RelicIds: %s", formatPhase3RelicIdsLine(buildTag.Phase3RelicIds)))
 	end
 	local classDetection = dc.ClassDetection
 	if type(classDetection) == "table" then
-		table.insert(lines, "--- ClassDetection ---")
-		table.insert(lines, string.format("DetectedClass: %s", fmtDevScalar(classDetection.DetectedClass)))
-		table.insert(lines, string.format("Scores: %s", formatClassScoresLine(classDetection.Scores)))
-		table.insert(lines, string.format("PrimaryWeaponId: %s", fmtDevScalar(classDetection.PrimaryWeaponId)))
-		table.insert(lines, string.format("TieBreak: %s", fmtDevScalar(classDetection.TieBreakNote)))
+		table.insert(rightLines, "--- ClassDetection ---")
+		table.insert(rightLines, string.format("DetectedClass: %s", fmtDevScalar(classDetection.DetectedClass)))
+		table.insert(rightLines, string.format("Scores: %s", formatClassScoresLine(classDetection.Scores)))
+		table.insert(rightLines, string.format("PrimaryWeaponId: %s", fmtDevScalar(classDetection.PrimaryWeaponId)))
+		table.insert(rightLines, string.format("TieBreak: %s", fmtDevScalar(classDetection.TieBreakNote)))
+	end
+	local classEffects = dc.ClassEffects
+	if type(classEffects) == "table" then
+		table.insert(rightLines, "--- ClassEffects ---")
+		table.insert(rightLines, string.format("ActiveClass: %s", fmtDevScalar(classEffects.ActiveClass)))
+		table.insert(rightLines, string.format("damageTakenMultiplier: %s", fmtDevNum(classEffects.damageTakenMultiplier)))
+		table.insert(rightLines, string.format("sweepBaseDamageMul: %s", fmtDevNum(classEffects.sweepBaseDamageMul)))
+		table.insert(rightLines, string.format("attackIntervalSecondsMul: %s", fmtDevNum(classEffects.attackIntervalSecondsMul)))
+	end
+	local blockDefense = dc.BlockDefense
+	if type(blockDefense) == "table" then
+		table.insert(rightLines, "--- BlockDefense ---")
+		table.insert(rightLines, string.format("blockCapable: %s", fmtDevScalar(blockDefense.blockCapable)))
+		table.insert(rightLines, string.format("effectiveBlockChance: %s", fmtDevNum(blockDefense.effectiveBlockChance)))
+		table.insert(rightLines, string.format("blockCooldownRemaining: %s", fmtDevNum(blockDefense.blockCooldownRemaining)))
+		table.insert(rightLines, string.format("blockCooldownUntil: %s", fmtDevNum(blockDefense.blockCooldownUntil)))
+		table.insert(rightLines, string.format("lastBlockSuccessAt: %s", fmtDevNum(blockDefense.lastBlockSuccessAt)))
 	end
 	local runInfo = dc.Run
 	if type(runInfo) == "table" then
-		table.insert(lines, "--- Run ---")
-		table.insert(lines, string.format("DefaultWeaponId: %s", fmtDevScalar(runInfo.DefaultWeaponId)))
+		table.insert(rightLines, "--- Run ---")
+		table.insert(rightLines, string.format("DefaultWeaponId: %s", fmtDevScalar(runInfo.DefaultWeaponId)))
 	end
 	local dbgInfo = dc.Debug
 	if type(dbgInfo) == "table" then
-		table.insert(lines, "--- Debug ---")
-		table.insert(lines, string.format("OverrideWeaponId: %s", fmtDevScalar(dbgInfo.OverrideWeaponId)))
-		table.insert(lines, string.format("ShowAttackRanges: %s", fmtDevScalar(dbgInfo.ShowAttackRanges)))
-		table.insert(lines, string.format("ShowDevCombatPanel: %s", fmtDevScalar(dbgInfo.ShowDevCombatPanel)))
+		table.insert(rightLines, "--- Debug ---")
+		table.insert(rightLines, string.format("OverrideWeaponId: %s", fmtDevScalar(dbgInfo.OverrideWeaponId)))
+		table.insert(rightLines, string.format("ShowAttackRanges: %s", fmtDevScalar(dbgInfo.ShowAttackRanges)))
+		table.insert(rightLines, string.format("ShowDevCombatPanel: %s", fmtDevScalar(dbgInfo.ShowDevCombatPanel)))
 	end
-	table.insert(lines, string.format("WeaponDropChance: %s", fmtDevScalar(dc.WeaponDropChance)))
-	table.insert(lines, string.format("WeaponDropChanceOverride: %s", fmtDevScalar(dc.WeaponDropChanceOverride)))
-	return table.concat(lines, "\n")
+	table.insert(rightLines, string.format("WeaponDropChance: %s", fmtDevScalar(dc.WeaponDropChance)))
+	table.insert(rightLines, string.format("WeaponDropChanceOverride: %s", fmtDevScalar(dc.WeaponDropChanceOverride)))
+	return { left = devCombatLinesToText(leftLines), right = devCombatLinesToText(rightLines) }
 end
 
 local HEALTH_LERP_SPEED_DOWN = 5
@@ -421,43 +446,66 @@ function HUDClient.init()
 	pad.PaddingBottom = UDim.new(0, 6)
 	pad.Parent = devCombatFrame
 
-	local devCombatLabel = Instance.new("TextLabel")
-	devCombatLabel.Name = "DevCombatLabel"
-	devCombatLabel.BackgroundTransparency = 1
-	devCombatLabel.Font = Enum.Font.Code
-	devCombatLabel.TextSize = 13
-	devCombatLabel.TextColor3 = Color3.fromRGB(235, 235, 245)
-	devCombatLabel.TextXAlignment = Enum.TextXAlignment.Left
-	devCombatLabel.TextYAlignment = Enum.TextYAlignment.Top
-	devCombatLabel.AutomaticSize = Enum.AutomaticSize.XY
-	devCombatLabel.TextWrapped = true
-	devCombatLabel.ZIndex = 2
-	devCombatLabel.MaxVisibleGraphemes = -1
-	devCombatLabel.Parent = devCombatFrame
+	local columnsFrame = Instance.new("Frame")
+	columnsFrame.Name = "Columns"
+	columnsFrame.BackgroundTransparency = 1
+	columnsFrame.AutomaticSize = Enum.AutomaticSize.XY
+	columnsFrame.Parent = devCombatFrame
 
-	devCombatLabel.AutomaticSize = Enum.AutomaticSize.Y
-	devCombatLabel.Size = UDim2.fromOffset(420, 0)
+	local columnsLayout = Instance.new("UIListLayout")
+	columnsLayout.FillDirection = Enum.FillDirection.Horizontal
+	columnsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	columnsLayout.Padding = UDim.new(0, 12)
+	columnsLayout.Parent = columnsFrame
+
+	local function makeDevCombatColumnLabel(name: string): TextLabel
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.Code
+		label.TextSize = 13
+		label.TextColor3 = Color3.fromRGB(235, 235, 245)
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextYAlignment = Enum.TextYAlignment.Top
+		label.TextWrapped = true
+		label.ZIndex = 2
+		label.MaxVisibleGraphemes = -1
+		label.AutomaticSize = Enum.AutomaticSize.Y
+		label.Size = UDim2.fromOffset(DEV_COMBAT_COLUMN_WIDTH_PX, 0)
+		label.Parent = columnsFrame
+		return label
+	end
+
+	local devCombatLabelLeft = makeDevCombatColumnLabel("DevCombatLabelLeft")
+	local devCombatLabelRight = makeDevCombatColumnLabel("DevCombatLabelRight")
 
 	local function updateDevCombatPanel(payload)
 		local dc = payload and payload.DevCombat
 		if type(dc) ~= "table" then
 			devCombatGui.Enabled = false
-			devCombatLabel.Text = ""
+			devCombatLabelLeft.Text = ""
+			devCombatLabelRight.Text = ""
 			return
 		end
 		local dbg = dc.Debug
 		if type(dbg) == "table" and dbg.ShowDevCombatPanel == false then
 			devCombatGui.Enabled = false
-			devCombatLabel.Text = ""
+			devCombatLabelLeft.Text = ""
+			devCombatLabelRight.Text = ""
 			return
 		end
 		devCombatGui.Enabled = true
 		local ok, textOrErr = pcall(formatDevCombat, dc)
-		if ok then
-			devCombatLabel.Text = textOrErr
+		if ok and type(textOrErr) == "table" then
+			devCombatLabelLeft.Text = textOrErr.left or ""
+			devCombatLabelRight.Text = textOrErr.right or ""
+		elseif ok then
+			devCombatLabelLeft.Text = tostring(textOrErr)
+			devCombatLabelRight.Text = ""
 		else
 			warn("[HUDClient] formatDevCombat 실패:", textOrErr)
-			devCombatLabel.Text = "[DevCombat]\n(표시 오류)"
+			devCombatLabelLeft.Text = "[DevCombat]\n(표시 오류)"
+			devCombatLabelRight.Text = ""
 		end
 	end
 

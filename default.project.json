@@ -29,6 +29,9 @@
         "BossHealthEvent": {
           "$className": "RemoteEvent"
         },
+        "BlueprintPickupNotice": {
+          "$className": "RemoteEvent"
+        },
         "WeaponPickupNotify": {
           "$className": "RemoteEvent"
         },

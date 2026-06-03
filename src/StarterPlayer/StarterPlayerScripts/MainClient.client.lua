@@ -21,11 +21,13 @@ elseif matchesPlace(placeId, RunConstants.StagePlaceId) then
 	CombatDebugClient.init()
 	local PickupNotifyClient = require(script.Parent:WaitForChild("PickupNotifyClient"))
 	PickupNotifyClient.init()
+	local BlueprintNoticeClient = require(script.Parent:WaitForChild("BlueprintNoticeClient"))
+	BlueprintNoticeClient.init()
 	print("[MainClient] branch=StagePlace placeId=", placeId)
 else
 	warn(
 		string.format(
-			"[MainClient] Unknown PlaceId=%d — LobbyPlaceId=%s StagePlaceId=%s — no Lobby/Stage client init (safe no-op)",
+			"[MainClient] Unknown PlaceId=%d ??LobbyPlaceId=%s StagePlaceId=%s ??no Lobby/Stage client init (safe no-op)",
 			placeId,
 			tostring(RunConstants.LobbyPlaceId),
 			tostring(RunConstants.StagePlaceId)

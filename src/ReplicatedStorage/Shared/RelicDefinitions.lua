@@ -15,11 +15,13 @@ RelicDefinitions.ALLOWED_STATS = {
 	attackIntervalSeconds = true,
 	blockChance = true,
 	attackHitCount = true,
+	knockbackPower = true,
 }
 
 RelicDefinitions.ALLOWED_OPERATIONS = {
 	mul = true,
 	add = true,
+	openOrAdd = true,
 }
 
 RelicDefinitions.ALLOWED_IMPLEMENTATION_TIERS = {
@@ -56,8 +58,8 @@ RelicDefinitions.DefinitionsById = {
 		id = "mercenarys_baldric",
 		sourceRow = 9,
 		label = "mercenary's baldric",
-		relicGroup = "Weapon-based relic (무기 유물)",
-		description = "Sweep 계열 가중치 증가\nSweep 피해 ×1.10",
+		relicGroup = "Weapon-based relic (Weapon relic)",
+		description = "Sweep ??????????????\nSweep ???? ??.10",
 		classTags = { "Slayer" },
 		effectTargetTags = { "th" },
 		modifierTags = { "Damage" },
@@ -99,8 +101,8 @@ RelicDefinitions.DefinitionsById = {
 		sourceRow = 7,
 		label = "Shattering Light",
 		sourceLabel = "TwoHandedSword",
-		relicGroup = "Weapon-based relic (무기 유물)",
-		description = "TwoHandedSword Sweep 공격 대미지 50%감소 (현재 기준)\nTwoHandedSword AttackCooldown 30% 감소 (현재 기준)",
+		relicGroup = "Weapon-based relic (Weapon relic)",
+		description = "TwoHandedSword Sweep ?????????? 50%????(??? ???)\nTwoHandedSword AttackCooldown 30% ????(??? ???)",
 		classTags = { "Slayer" },
 		effectTargetTags = { "th" },
 		modifierTags = { "Damage", "Cooldown" },
@@ -132,7 +134,7 @@ RelicDefinitions.DefinitionsById = {
 				operation = "mul",
 				value = 0.5,
 				requiresTuning = false,
-				notes = "Sweep 대미지 50% 감소",
+				notes = "Sweep damage mul 0.5.",
 			},
 			{
 				kind = "stat",
@@ -144,7 +146,7 @@ RelicDefinitions.DefinitionsById = {
 				operation = "mul",
 				value = 0.7,
 				requiresTuning = false,
-				notes = "AttackCooldown 30% 감소",
+				notes = "Attack interval mul 0.7.",
 			},
 		},
 		notes = "RL.TAGS row #7; display label renamed from excel placeholder TwoHandedSword.",
@@ -154,8 +156,8 @@ RelicDefinitions.DefinitionsById = {
 		sourceRow = 8,
 		label = "Last Giant's Claw",
 		sourceLabel = "TwoHandedSword",
-		relicGroup = "Weapon-based relic (무기 유물)",
-		description = "TwoHandedSword Sweep 공격 대미지 40% 증가 (현재 기준)\nTwoHandedSword AttackCooldown 30% 증가 (현재 기준)",
+		relicGroup = "Weapon-based relic (Weapon relic)",
+		description = "TwoHandedSword Sweep ?????????? 40% ??? (??? ???)\nTwoHandedSword AttackCooldown 30% ??? (??? ???)",
 		classTags = { "Slayer" },
 		effectTargetTags = { "th" },
 		modifierTags = { "Damage", "Cooldown" },
@@ -208,8 +210,8 @@ RelicDefinitions.DefinitionsById = {
 		id = "needle_edge",
 		sourceRow = 27,
 		label = "Needle Edge",
-		relicGroup = "Ability/tag-based relic (능력 유물)",
-		description = "Thrust 계열 가중치 증가\nThrust 피해 ×1.10",
+		relicGroup = "Ability/tag-based relic (Ability relic)",
+		description = "Thrust ??????????????\nThrust ???? ??.10",
 		classTags = { "Lancer" },
 		effectTargetTags = { "thrust" },
 		modifierTags = { "Damage" },
@@ -241,7 +243,7 @@ RelicDefinitions.DefinitionsById = {
 				operation = "mul",
 				value = 1.10,
 				requiresTuning = false,
-				notes = "Excel ×1.10; RelicData ThrustDamageMul 1.15 is legacy, not Phase 3 SSOT.",
+				notes = "Excel ??.10; RelicData ThrustDamageMul 1.15 is legacy, not Phase 3 SSOT.",
 			},
 		},
 		notes = "RL.TAGS row #27; Spear-only via weaponTag sp.",
@@ -250,8 +252,8 @@ RelicDefinitions.DefinitionsById = {
 		id = "giants_pike",
 		sourceRow = 16,
 		label = "Giant's Pike",
-		relicGroup = "Weapon-based relic (무기 유물)",
-		description = "Spear Thrust 사거리 ×2.0",
+		relicGroup = "Weapon-based relic (Weapon relic)",
+		description = "Spear Thrust ???????.0",
 		classTags = { "Lancer" },
 		effectTargetTags = { "sp", "thrust" },
 		modifierTags = { "Range" },
@@ -291,12 +293,12 @@ RelicDefinitions.DefinitionsById = {
 	run_reinforced_rim = {
 		id = "run_reinforced_rim",
 		sourceRow = 13,
-		label = "Reinforced Rim",
-		relicGroup = "Weapon-based relic (무기 유물)",
-		description = "SwordShield Sweep 피해 ×1.15 (런 획득)",
+		label = "Reinforced Shield Rim",
+		relicGroup = "Weapon-based relic (Weapon relic)",
+		description = "Block chance increase",
 		classTags = { "Guardian" },
-		effectTargetTags = { "ss", "sweep" },
-		modifierTags = { "Damage" },
+		effectTargetTags = { "block" },
+		modifierTags = { "Block_chance" },
 		triggerTags = {},
 		obtainTags = { "Crafted" },
 		unlockTags = { "Blueprint" },
@@ -317,25 +319,65 @@ RelicDefinitions.DefinitionsById = {
 		modifiers = {
 			{
 				kind = "stat",
+				targetTags = {},
+				stat = "blockChance",
+				operation = "openOrAdd",
+				openValue = 0.05,
+				addValue = 0.10,
+				requiresTuning = false,
+				notes = "Excel RL.TAGS #13; 0% -> open 5%, else +10%p via BlockChanceResolver.",
+			},
+		},
+		notes = "Excel RL.TAGS row #13; generic blockChance sample; run chest id unchanged.",
+	},
+	run_shield_spike = {
+		id = "run_shield_spike",
+		sourceRow = 18,
+		label = "Shield Spike",
+		relicGroup = "Weapon-based relic (Weapon relic)",
+		description = "ss_sweep: add Knockback Power (generic stat pipeline)",
+		classTags = { "Guardian" },
+		effectTargetTags = { "ss", "sweep" },
+		modifierTags = { "Knockback_Power" },
+		triggerTags = {},
+		obtainTags = { "Crafted" },
+		unlockTags = { "Blueprint" },
+		stackTags = "Stackable",
+		requiredMaterials = "",
+		classTagMatch = "TRUE",
+		implementationTier = "A",
+		mvpPriority = "Medium",
+		blueprintId = "run_shield_spike",
+		craftCost = {
+			blueprintProgressMin = 1,
+			materials = {},
+		},
+		isCraftable = true,
+		isStartingEligible = false,
+		isRunChestEligible = true,
+		isPermanentUnlockable = true,
+		modifiers = {
+			{
+				kind = "stat",
 				targetTags = {
 					weaponTag = "ss",
 					attackTag = "sweep",
 				},
-				stat = "sweepBaseDamage",
-				operation = "mul",
-				value = 1.15,
+				stat = "knockbackPower",
+				operation = "add",
+				value = 60,
 				requiresTuning = false,
-				notes = "Phase3 run relic; not StartingRelic reinforced_shield_rim id.",
+				notes = "Excel RL.TAGS #18 Knockback_Power; initial 60 (Phase 2 legacy, subject to tuning).",
 			},
 		},
-		notes = "Phase3RelicChest; legacy dropped concept via new id.",
+		notes = "Excel sourceName Shield Spike; Paladin class tag mapped to Guardian metadata; ss+sweep knockback sample.",
 	},
 	run_rhythm_harness = {
 		id = "run_rhythm_harness",
 		sourceRow = 11,
 		label = "Rhythm Harness",
-		relicGroup = "Weapon-based relic (무기 유물)",
-		description = "SwordShield 공격 간격 ×0.90 (런 획득)",
+		relicGroup = "Weapon-based relic (Weapon relic)",
+		description = "SwordShield ???????????.90 (??????)",
 		classTags = { "Guardian" },
 		effectTargetTags = { "ss" },
 		modifierTags = { "Cooldown" },
@@ -375,8 +417,8 @@ RelicDefinitions.DefinitionsById = {
 		id = "old_shield_emblem",
 		sourceRow = 29,
 		label = "Old Shield Emblem",
-		relicGroup = "Ability/tag-based relic (능력 유물)",
-		description = "SwordShield Sweep 피해 ×1.10 (RelicData 7C-1 migrate)",
+		relicGroup = "Ability/tag-based relic (Ability relic)",
+		description = "SwordShield Sweep ???? ??.10 (RelicData 7C-1 migrate)",
 		classTags = { "Guardian" },
 		effectTargetTags = { "ss", "sweep" },
 		modifierTags = { "Damage" },
@@ -417,8 +459,8 @@ RelicDefinitions.DefinitionsById = {
 		id = "knights_belt",
 		sourceRow = 19,
 		label = "Knight's Belt",
-		relicGroup = "Weapon-based relic (무기 유물)",
-		description = "SwordShield 공격 간격 ×0.80 (RelicData 7C-1 migrate)",
+		relicGroup = "Weapon-based relic (Weapon relic)",
+		description = "SwordShield ???????????.80 (RelicData 7C-1 migrate)",
 		classTags = { "Guardian" },
 		effectTargetTags = { "ss" },
 		modifierTags = { "Cooldown" },
@@ -537,6 +579,36 @@ local function validateModifier(warnings: { string }, relicId: string, modIndex:
 		)
 	end
 
+	if op == "openOrAdd" then
+		if stat ~= "blockChance" then
+			table.insert(
+				warnings,
+				string.format(
+					"[RelicDefinitions] %s: modifiers[%d].openOrAdd only allowed for blockChance",
+					relicId,
+					modIndex
+				)
+			)
+		end
+		if type(mod.openValue) ~= "number" or type(mod.addValue) ~= "number" then
+			table.insert(
+				warnings,
+				string.format(
+					"[RelicDefinitions] %s: modifiers[%d].openOrAdd requires openValue and addValue numbers",
+					relicId,
+					modIndex
+				)
+			)
+		end
+	elseif op == "add" or op == "mul" then
+		if type(value) ~= "number" then
+			table.insert(
+				warnings,
+				string.format("[RelicDefinitions] %s: modifiers[%d].value must be number for %s", relicId, modIndex, op)
+			)
+		end
+	end
+
 	if type(mod.requiresTuning) ~= "boolean" then
 		table.insert(
 			warnings,
@@ -637,6 +709,62 @@ end
 
 function RelicDefinitions.hasDefinition(id: string): boolean
 	return RelicDefinitions.getDefinition(id) ~= nil
+end
+
+--- Retired ids: not blueprint drop candidates (may still exist in saved profiles).
+function RelicDefinitions.isRetiredRelicId(relicId: string): boolean
+	return relicId == "cracked_sword_tip"
+end
+
+function RelicDefinitions.resolveBlueprintId(def: any, relicId: string): string?
+	if type(def) ~= "table" then
+		return nil
+	end
+	local bp = def.blueprintId
+	if type(bp) == "string" and bp ~= "" then
+		return bp
+	end
+	if type(relicId) == "string" and relicId ~= "" then
+		return relicId
+	end
+	return nil
+end
+
+--- craftable + permanentUnlockable; excludes retired and owned relic ids (real profile set).
+function RelicDefinitions.listBlueprintDropCandidateIds(ownedRelicSet: { [string]: boolean }?): { string }
+	local owned = ownedRelicSet or {}
+	local out: { string } = {}
+	for relicId, row in pairs(RelicDefinitions.DefinitionsById) do
+		if type(row) == "table" and row.isCraftable == true and row.isPermanentUnlockable == true then
+			if not RelicDefinitions.isRetiredRelicId(relicId) then
+				local blueprintId = RelicDefinitions.resolveBlueprintId(row, relicId)
+				if blueprintId and owned[relicId] ~= true then
+					table.insert(out, blueprintId)
+				end
+			end
+		end
+	end
+	table.sort(out)
+	return out
+end
+
+function RelicDefinitions.getDisplayLabelForBlueprintId(blueprintId: string): string
+	if type(blueprintId) ~= "string" or blueprintId == "" then
+		return "Blueprint"
+	end
+	for relicId, row in pairs(RelicDefinitions.DefinitionsById) do
+		if type(row) == "table" then
+			local bp = RelicDefinitions.resolveBlueprintId(row, relicId)
+			if bp == blueprintId and type(row.label) == "string" and row.label ~= "" then
+				return row.label
+			end
+		end
+	end
+	local def = RelicDefinitions.getDefinition(blueprintId)
+	if def and type(def.label) == "string" and def.label ~= "" then
+		return def.label
+	end
+	return blueprintId
 end
 
 --- Returns ok, list of warning strings (empty when ok). Does not error on require.

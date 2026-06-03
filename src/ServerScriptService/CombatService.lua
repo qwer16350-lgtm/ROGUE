@@ -12,7 +12,8 @@ function CombatService.init(
 	waveService,
 	healthPickupService,
 	weaponDropService,
-	relicDropService
+	relicDropService,
+	blueprintDiscoveryService
 )
 	local Shared = ReplicatedStorage:WaitForChild("Shared")
 	local RunWeaponResolver = require(Shared:WaitForChild("RunWeaponResolver"))
@@ -210,6 +211,55 @@ function CombatService.init(
 		return progressionService.hasPhase3RelicChestOfferAvailable(player)
 	end
 
+	local function getKnockbackDurationSeconds(): number
+		local kb = gameConfig.KnockbackCombat
+		if type(kb) == "table" and type(kb.DefaultDurationSeconds) == "number" and kb.DefaultDurationSeconds > 0 then
+			return kb.DefaultDurationSeconds
+		end
+		return 0.20
+	end
+
+	local function tryApplySweepKnockback(playerRoot: BasePart, entry, sweepEff: any, now: number): boolean
+		if type(sweepEff) ~= "table" then
+			return false
+		end
+		local power = sweepEff.KnockbackPower
+		if type(power) ~= "number" or power <= 0 then
+			return false
+		end
+		local part = entry.part
+		if not part or not part.Parent then
+			return false
+		end
+		if type(entry.state) ~= "table" or entry.state.health <= 0 then
+			return false
+		end
+		if part.Anchored then
+			return false
+		end
+		local delta = part.Position - playerRoot.Position
+		local flat = Vector3.new(delta.X, 0, delta.Z)
+		if flat.Magnitude < 1e-4 then
+			return false
+		end
+		local dir = flat.Unit
+		local duration = getKnockbackDurationSeconds()
+		entry.state.knockbackUntil = now + duration
+		part.AssemblyLinearVelocity = Vector3.new(dir.X * power, 0, dir.Z * power)
+		local dbg = gameConfig.Debug
+		if type(dbg) == "table" and dbg.LogKnockback == true then
+			print(
+				string.format(
+					"[Knockback] power=%s duration=%s until=%s",
+					tostring(power),
+					tostring(duration),
+					tostring(entry.state.knockbackUntil)
+				)
+			)
+		end
+		return true
+	end
+
 	local function applyDamageResolved(player: Player, entry, damage: number, sourceWeaponId: string)
 		local part = entry.part
 		if not part.Parent then
@@ -228,7 +278,7 @@ function CombatService.init(
 
 		if entry.state.health <= 0 then
 			fireVfx("death", hitPos)
-			waveService.recordKill()
+			waveService.recordKill(entry)
 			local deathPos = part.Position
 			local baseDropChance = (healthPickupService and gameConfig.HealthOrbDropChance) or 0
 			if type(baseDropChance) ~= "number" or baseDropChance <= 0 then
@@ -268,6 +318,9 @@ function CombatService.init(
 				if shouldForcePhase3RelicChestOnKill() or math.random() < getPhase3RelicChestDropChance() then
 					relicDropService.spawnPhase3RelicChestAt(deathPos, player)
 				end
+			end
+			if blueprintDiscoveryService and type(blueprintDiscoveryService.tryRollAndSpawnOnKill) == "function" then
+				blueprintDiscoveryService.tryRollAndSpawnOnKill(player, entry, deathPos)
 			end
 			part:Destroy()
 		else
@@ -392,7 +445,8 @@ function CombatService.init(
 			profile,
 			upgrades,
 			weaponGrade,
-			phase3RelicIds
+			phase3RelicIds,
+			progressionService.getDetectedClass(player)
 		)
 		local interval = eff.AttackIntervalSeconds
 		local sweepEff = eff.Sweep
@@ -515,6 +569,9 @@ function CombatService.init(
 			local part = entry.part
 			if part.Parent then
 				applyDamageResolved(player, entry, damage, "SwordShield")
+				if not useThrust and type(sweepEff) == "table" then
+					tryApplySweepKnockback(root, entry, sweepEff, now)
+				end
 			end
 		end
 	end
@@ -532,7 +589,8 @@ function CombatService.init(
 			profile,
 			upgrades,
 			weaponGrade,
-			phase3RelicIds
+			phase3RelicIds,
+			progressionService.getDetectedClass(player)
 		)
 		local thrustEff = type(eff) == "table" and eff.Thrust or nil
 		if type(thrustEff) ~= "table" then
@@ -632,7 +690,8 @@ function CombatService.init(
 			profile,
 			upgrades,
 			weaponGrade,
-			phase3RelicIds
+			phase3RelicIds,
+			progressionService.getDetectedClass(player)
 		)
 		local effSweep = type(effective) == "table" and effective.Sweep or nil
 

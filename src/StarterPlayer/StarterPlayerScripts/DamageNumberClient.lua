@@ -13,7 +13,7 @@ local function tryParseVector3(raw: unknown): Vector3?
 	return nil
 end
 
-local function showOne(amount: number, worldPos: Vector3)
+local function showFloating(displayText: string, worldPos: Vector3, billboardSize: Vector2)
 	local anchor = Instance.new("Part")
 	anchor.Name = "DamageNumberAnchor"
 	anchor.Anchored = true
@@ -30,7 +30,7 @@ local function showOne(amount: number, worldPos: Vector3)
 	bb.AlwaysOnTop = true
 	bb.LightInfluence = 0
 	bb.ClipsDescendants = false
-	bb.Size = UDim2.fromOffset(67, 27)
+	bb.Size = UDim2.fromOffset(billboardSize.X, billboardSize.Y)
 	bb.StudsOffsetWorldSpace = Vector3.zero
 	bb.Parent = anchor
 
@@ -42,7 +42,7 @@ local function showOne(amount: number, worldPos: Vector3)
 	lbl.BorderSizePixel = 0
 	lbl.Font = Enum.Font.GothamBold
 	lbl.TextScaled = true
-	lbl.Text = tostring(math.floor(amount + 0.5))
+	lbl.Text = displayText
 	lbl.TextColor3 = Color3.fromRGB(255, 246, 200)
 	lbl.TextStrokeTransparency = 0.65
 	lbl.TextStrokeColor3 = Color3.fromRGB(20, 20, 20)
@@ -77,6 +77,10 @@ local function showOne(amount: number, worldPos: Vector3)
 	end)
 end
 
+local function showOne(amount: number, worldPos: Vector3)
+	showFloating(tostring(math.floor(amount + 0.5)), worldPos, Vector2.new(67, 27))
+end
+
 function DamageNumberClient.init()
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	local ev = remotes:WaitForChild("DamageNumberEvent") :: RemoteEvent
@@ -87,11 +91,22 @@ function DamageNumberClient.init()
 			return
 		end
 
+		local pos = tryParseVector3((p :: any).WorldPosition)
+		if pos == nil then
+			warn("[DamageNumberClient] invalid payload — WorldPosition:Vector3 required")
+			return
+		end
+
+		local rawText = (p :: any).Text
+		if type(rawText) == "string" and rawText ~= "" then
+			showFloating(rawText, pos, Vector2.new(90, 27))
+			return
+		end
+
 		local rawAmt = (p :: any).Amount
 		local amt = tonumber(rawAmt)
-		local pos = tryParseVector3((p :: any).WorldPosition)
-		if amt == nil or pos == nil then
-			warn("[DamageNumberClient] invalid payload — expected Amount:number, WorldPosition:Vector3")
+		if amt == nil then
+			warn("[DamageNumberClient] invalid payload — expected Amount:number or Text:string")
 			return
 		end
 

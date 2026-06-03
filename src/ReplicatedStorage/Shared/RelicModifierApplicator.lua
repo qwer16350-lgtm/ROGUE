@@ -1,5 +1,6 @@
 -- Applies RelicDefinitions modifiers to effective combat stats (Phase 3).
 -- Does not apply combat by itself; no ProgressionService / RelicData dependency.
+-- Contact block chance: BlockChanceResolver aggregates blockChance modifiers (not this module).
 
 local RelicDefinitions = require(script.Parent:WaitForChild("RelicDefinitions"))
 
@@ -30,6 +31,8 @@ local STAT_FIELD_SS = {
 	sweepBaseDamage = { sweep = true, key = "BaseDamage" },
 	thrustBaseDamage = { thrust = true, key = "BaseDamage" },
 	attackIntervalSeconds = { weapon = true, key = "AttackIntervalSeconds" },
+	blockChance = { weapon = true, key = "BlockChance" },
+	knockbackPower = { sweep = true, key = "KnockbackPower" },
 }
 
 local function shallowCopyTwoHandedEffective(effective: any): any
@@ -82,6 +85,7 @@ local function shallowCopySwordShieldEffective(effective: any): any
 	end
 	local out = {
 		AttackIntervalSeconds = effective.AttackIntervalSeconds,
+		BlockChance = effective.BlockChance,
 	}
 	local sweep = effective.Sweep
 	if type(sweep) == "table" then
@@ -89,6 +93,7 @@ local function shallowCopySwordShieldEffective(effective: any): any
 			BaseDamage = sweep.BaseDamage,
 			RangeStuds = sweep.RangeStuds,
 			AngleDeg = sweep.AngleDeg,
+			KnockbackPower = sweep.KnockbackPower,
 		}
 	else
 		out.Sweep = sweep
@@ -239,7 +244,7 @@ local function shouldApplySwordShieldModifier(mod: any, stat: string): (boolean,
 		return false, nil
 	end
 	local modAttackTag = mod.targetTags.attackTag
-	if stat == "attackIntervalSeconds" then
+	if stat == "attackIntervalSeconds" or stat == "blockChance" then
 		if modAttackTag ~= nil then
 			return false, nil
 		end
@@ -248,7 +253,7 @@ local function shouldApplySwordShieldModifier(mod: any, stat: string): (boolean,
 		end
 		return true, ""
 	end
-	if stat == "sweepBaseDamage" then
+	if stat == "sweepBaseDamage" or stat == "knockbackPower" then
 		return modAttackTag == nil or modAttackTag == SS_ATTACK_TAG_SWEEP, SS_ATTACK_TAG_SWEEP
 	end
 	if stat == "thrustBaseDamage" then
@@ -465,6 +470,9 @@ function RelicModifierApplicator.applyToSwordShieldEffective(
 				warn(string.format("[RelicModifierApplicator] %s: invalid stat %s (skipped)", relicId, tostring(stat)))
 				continue
 			end
+			if stat == "blockChance" then
+				continue
+			end
 			if type(op) ~= "string" or RelicDefinitions.ALLOWED_OPERATIONS[op] ~= true then
 				warn(
 					string.format(
@@ -473,6 +481,9 @@ function RelicModifierApplicator.applyToSwordShieldEffective(
 						tostring(op)
 					)
 				)
+				continue
+			end
+			if op == "openOrAdd" then
 				continue
 			end
 			local ok, passAttackTag = shouldApplySwordShieldModifier(mod, stat)

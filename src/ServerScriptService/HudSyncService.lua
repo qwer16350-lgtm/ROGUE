@@ -4,7 +4,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local UpgradeData = require(Shared:WaitForChild("UpgradeData"))
 local WeaponProfiles = require(Shared:WaitForChild("WeaponProfiles"))
 
-local BuildTagService = require(script.Parent:WaitForChild("BuildTagService"))
+local ClassEffectApplicator = require(Shared:WaitForChild("ClassEffectApplicator"))
 
 local HudSyncService = {}
 local DEBUG_STAGE_HUD = true
@@ -33,6 +33,7 @@ local function buildDevCombat(player, progressionService, gameConfig)
 		upgrades = {}
 	end
 	local phase3ActiveRelicIds = progressionService.getPhase3ActiveRelicIds(player)
+	local detectedClass = progressionService.getDetectedClass(player)
 	local weaponGrade = progressionService.getWeaponGrade(player)
 	local activeWeaponsMap = progressionService.getActiveWeapons(player)
 	local activeWeaponsList = {}
@@ -92,7 +93,8 @@ local function buildDevCombat(player, progressionService, gameConfig)
 			WeaponProfiles.SwordShield,
 			upgrades,
 			weaponGrade,
-			phase3ActiveRelicIds
+			phase3ActiveRelicIds,
+			detectedClass
 		)
 	elseif weaponId == "BasicMagic" then
 		dc.BasicMagicEffective = UpgradeData.getEffectiveCombatStats(gameConfig, upgrades)
@@ -102,7 +104,7 @@ local function buildDevCombat(player, progressionService, gameConfig)
 		local sp = WeaponProfiles.Spear
 		local spGrade = progressionService.getWeaponGradeFor(player, "Spear")
 		local phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player)
-		local eff = UpgradeData.getSpearEffectiveCombat(gameConfig, sp, upgrades, spGrade, phase3RelicIds)
+		local eff = UpgradeData.getSpearEffectiveCombat(gameConfig, sp, upgrades, spGrade, phase3RelicIds, detectedClass)
 		local th = type(eff) == "table" and eff.Thrust or nil
 		local meta = type(eff) == "table" and eff.Meta or nil
 		dc.SpearEffective = {
@@ -121,7 +123,7 @@ local function buildDevCombat(player, progressionService, gameConfig)
 		local tw = WeaponProfiles.TwoHandedSword
 		local twGrade = progressionService.getWeaponGradeFor(player, "TwoHandedSword")
 		local phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player)
-		local eff = UpgradeData.getTwoHandedSwordEffectiveCombat(gameConfig, tw, upgrades, twGrade, phase3RelicIds)
+		local eff = UpgradeData.getTwoHandedSwordEffectiveCombat(gameConfig, tw, upgrades, twGrade, phase3RelicIds, detectedClass)
 		local sw = type(eff) == "table" and eff.Sweep or nil
 		local meta = type(eff) == "table" and eff.Meta or nil
 		dc.TwoHandedSwordEffective = {
@@ -136,11 +138,7 @@ local function buildDevCombat(player, progressionService, gameConfig)
 		}
 	end
 
-	local buildSnapshot = BuildTagService.computeBuildSnapshot({
-		activeWeapons = activeWeaponsMap,
-		phase3RelicIds = progressionService.getPhase3ActiveRelicIds(player),
-		primaryWeaponId = weaponId,
-	})
+	local buildSnapshot = progressionService.getBuildSnapshot(player)
 	dc.BuildTag = {
 		TagCounts = buildSnapshot.TagCounts,
 		Phase3RelicIds = buildSnapshot.Phase3RelicIds,
@@ -151,11 +149,32 @@ local function buildDevCombat(player, progressionService, gameConfig)
 		TieBreakNote = buildSnapshot.TieBreakNote,
 		PrimaryWeaponId = buildSnapshot.PrimaryWeaponId,
 	}
+	dc.ClassEffects = ClassEffectApplicator.buildHudClassEffects(buildSnapshot.DetectedClass)
+
+	local now = tick()
+	local cdUntil = player:GetAttribute("blockCooldownUntil")
+	local cdRemaining = 0
+	if type(cdUntil) == "number" and cdUntil > now then
+		cdRemaining = cdUntil - now
+	end
+	dc.BlockDefense = {
+		blockCapable = player:GetAttribute("blockCapable") == true,
+		effectiveBlockChance = player:GetAttribute("effectiveBlockChance"),
+		blockCooldownUntil = cdUntil,
+		blockCooldownRemaining = cdRemaining,
+		lastBlockSuccessAt = player:GetAttribute("lastBlockSuccessAt"),
+	}
 
 	return dc
 end
 
 local function buildPayload(player, progressionService, waveService, gameConfig)
+	if typeof(progressionService.syncClassEffectPlayerAttributes) == "function" then
+		progressionService.syncClassEffectPlayerAttributes(player)
+	end
+	if typeof(progressionService.syncBlockDefenseAttributes) == "function" then
+		progressionService.syncBlockDefenseAttributes(player)
+	end
 	local waveInfo = waveService.getHudInfo()
 	local prog = progressionService.getHudProgress(player)
 

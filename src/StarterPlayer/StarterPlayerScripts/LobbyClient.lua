@@ -64,6 +64,33 @@ local function hideAllPanels(panelMap: { [string]: GuiObject })
 	end
 end
 
+local PLACEHOLDER_BODY_MARKERS = { "Placeholder", "기능 없음", "서버 연동" }
+
+local function isPlaceholderPanelBodyText(text: string): boolean
+	for _, marker in ipairs(PLACEHOLDER_BODY_MARKERS) do
+		if string.find(text, marker, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function stripPlaceholderPanelBodies(panelMap: { [string]: GuiObject })
+	for _, panel in panelMap do
+		if panel then
+			for _, desc in panel:GetDescendants() do
+				if desc:IsA("TextLabel") then
+					local t = desc.Text
+					if type(t) == "string" and isPlaceholderPanelBodyText(t) then
+						desc.Text = ""
+						desc.Visible = false
+					end
+				end
+			end
+		end
+	end
+end
+
 local relicFusionPanel: any = nil
 local relicCollectionPanel: any = nil
 local relicProfileClient: any = nil
@@ -373,16 +400,16 @@ local function buildFallbackLobbyGui(): ScreenGui
 	panelsWrap.Parent = root
 
 	local titles: { [string]: string } = {
-		SkillTreePanel = "Skill Tree (placeholder)",
-		ShopPanel = "Shop (placeholder)",
-		InventoryPanel = "Inventory (placeholder)",
-		ArtifactCollectionPanel = "Artifacts (placeholder)",
-		Top50Panel = "Top 50 (placeholder)",
-		PetGachaPanel = "Pet Gacha (placeholder)",
-		BMShopPanel = "BM Shop (placeholder)",
-		InGameShopPanel = "In-Game Shop (placeholder)",
-		RelicShopPanel = "Relic Shop (placeholder)",
-		RelicFusionPanel = "Relic Fusion (placeholder)",
+		SkillTreePanel = "Skill Tree",
+		ShopPanel = "Shop",
+		InventoryPanel = "Inventory",
+		ArtifactCollectionPanel = "Artifacts",
+		Top50Panel = "Top 50",
+		PetGachaPanel = "Pet Gacha",
+		BMShopPanel = "BM Shop",
+		InGameShopPanel = "In-Game Shop",
+		RelicShopPanel = "Relic Shop",
+		RelicFusionPanel = "Relic Fusion",
 	}
 
 	for _, pname in ipairs(PANEL_NAMES) do
@@ -422,18 +449,6 @@ local function buildFallbackLobbyGui(): ScreenGui
 		close.Parent = p
 		corner(close)
 
-		local body = Instance.new("TextLabel")
-		body.BackgroundTransparency = 1
-		body.Position = UDim2.fromOffset(16, 50)
-		body.Size = UDim2.new(1, -32, 1, -64)
-		body.Font = Enum.Font.Gotham
-		body.TextSize = 14
-		body.TextColor3 = Color3.fromRGB(200, 200, 206)
-		body.TextWrapped = true
-		body.TextXAlignment = Enum.TextXAlignment.Left
-		body.TextYAlignment = Enum.TextYAlignment.Top
-		body.Text = "Placeholder — 기능 없음 (서버 연동 안 함)."
-		body.Parent = p
 	end
 
 	return sg
@@ -468,6 +483,7 @@ function LobbyClient.init()
 
 	local panelMap = collectPanelMap(gui)
 	warnMissingPanels(panelMap)
+	stripPlaceholderPanelBodies(panelMap)
 
 	wirePlayerActionButtons(gui, panelMap)
 	wirePanelCloseButtons(gui, panelMap)

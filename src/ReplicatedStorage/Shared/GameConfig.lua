@@ -96,19 +96,35 @@ return {
 	------------------------------------------------------------
 	WeaponDropChance = 0.01,
 	Phase3RelicChestDropChance = 0.01,
+	--- Blueprint discovery drop on enemy kill (minimum).
+	BlueprintDropChanceBySourceKind = {
+		Normal = 1 / 10000,
+		Elite = 1 / 1000,
+		Boss = 1 / 10,
+	},
 	RelicStartingSlotMax = 1,
 	------------------------------------------------------------
 	-- Lobby relic profile persistence (Step 5A)
 	------------------------------------------------------------
 
 	------------------------------------------------------------
-	-- Stage run-end material grant (Step 5B, placeholder RewardBudget)
+	-- Stage run-end RewardBudget (minimum)
 	------------------------------------------------------------
-	RunResultReward = {
+	RewardBudget = {
 		Enabled = true,
-		ClearShard = 3,
-		FailShard = 1,
-		LastFloorClearAncientShard = 1,
+		SuccessBase = 5,
+		FailureBase = 2,
+		NormalKillsPerBudget = 5,
+		EliteKillBudget = 2,
+		BossKillBudget = 15,
+		FailureBudgetCap = 20,
+		BossTargetKillSeconds = 45,
+		MaxBossSpeedBonusWindowSeconds = 30,
+		SecondsPerBossSpeedPoint = 5,
+		BossSpeedMultiplierPerPoint = 0.05,
+		CleanBonusMax = 10,
+		CorruptedGearGuaranteeCost = 12,
+		AncientShardPerMaterialCostValue = 10,
 	},
 	RelicProfilePersistence = {
 		Enabled = true,
@@ -117,6 +133,21 @@ return {
 		EquipSaveDebounceSeconds = 5,
 		LoadRetryCount = 3,
 		SaveRetryCount = 3,
+	},
+
+	------------------------------------------------------------
+	-- Block defense MVP (enemy contact damage only)
+	------------------------------------------------------------
+	BlockDefense = {
+		BaseBlockChance = 0,
+		BlockCooldownSeconds = 3,
+	},
+
+	------------------------------------------------------------
+	-- Knockback combat (generic effective.Sweep.KnockbackPower)
+	------------------------------------------------------------
+	KnockbackCombat = {
+		DefaultDurationSeconds = 0.20,
 	},
 
 	------------------------------------------------------------
@@ -132,14 +163,21 @@ return {
 		ShowAttackRanges = true,
 		WeaponDropChanceOverride = nil,
 		Phase3RelicChestDropChanceOverride = nil,
+		--- nil = tier table. number in [0,1] = uniform override for blueprint drop rolls (Studio smoke).
+		BlueprintDropChanceOverride = nil,
+		--- nil = policy. number >= 0 = fixed final RewardBudget (Studio smoke).
+		RewardBudgetOverride = nil,
 		ForcePhase3RelicChestOnKill = false,
 		OverrideWeaponId = nil,
-		Phase3TestRelicIds = nil,
+		--- Studio block smoke: active at run start (set nil before publish).
+		Phase3TestRelicIds = {},
 		Phase3FakeOwnedRelicIds = nil,
 		Phase3FakeEquippedStartingRelicIds = {},
 		ProgressionVerbose = false,
+		LogBlockDefense = false,
+		LogKnockback = false,
 		-- Lobby craft: false = enforce blueprint + materials (Publish). Studio smoke: true.
-		RelicCraftSkipRequirements = true,
+		RelicCraftSkipRequirements = false,
 		-- nil = no merge after DataStore load (Publish). Studio example (uncomment):
 		-- RelicProfileTestSeed = { blueprintProgress = { needle_edge = 1 }, ownedRelics = {} },
 		RelicProfileTestSeed = nil,

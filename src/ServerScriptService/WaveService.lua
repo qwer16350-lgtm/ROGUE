@@ -4,7 +4,9 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local StageData = require(Shared:WaitForChild("StageData"))
 local SpawnRules = require(Shared:WaitForChild("SpawnRules"))
 local RunConstants = require(Shared:WaitForChild("Run"):WaitForChild("RunConstants"))
+local EnemyTier = require(Shared:WaitForChild("Config"):WaitForChild("EnemyTier"))
 local RunResultRewardPolicy = require(Shared:WaitForChild("RunResultRewardPolicy"))
+local PlayerContactDamageService = require(script.Parent:WaitForChild("PlayerContactDamageService"))
 local RelicProfilePersistence = require(script.Parent:WaitForChild("RelicProfilePersistence"))
 
 local WaveService = {}
@@ -17,6 +19,7 @@ local hudSessionLengthSeconds = 0
 local recordKillImpl = nil
 
 local ctx = {
+	blueprintDiscoveryService = nil,
 	players = nil,
 	gameConfig = nil,
 	enemyService = nil,
@@ -33,6 +36,11 @@ local sess = {
 	bossSpawned = false,
 	bossPart = nil,
 	killCount = 0,
+	normalKills = 0,
+	eliteKills = 0,
+	bossKills = 0,
+	bossSpawnAt = nil,
+	finalDamageTakenByUserId = {},
 	lastSpawnTime = 0,
 	lastEliteSpawnTime = 0,
 	spawnProfile = nil,
@@ -42,10 +50,24 @@ local sess = {
 	maxFloor = nil,
 }
 
-function WaveService.recordKill()
+function WaveService.recordKill(entry: any?)
 	if recordKillImpl then
-		recordKillImpl()
+		recordKillImpl(entry)
 	end
+end
+
+function WaveService.recordFinalDamage(player: Player, amount: number)
+	if not sess.active then
+		return
+	end
+	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+	if type(amount) ~= "number" or amount <= 0 then
+		return
+	end
+	local uid = player.UserId
+	sess.finalDamageTakenByUserId[uid] = (sess.finalDamageTakenByUserId[uid] or 0) + amount
 end
 
 function WaveService.getHudInfo()
@@ -64,6 +86,7 @@ function WaveService.bindHudPushContext(deps)
 	ctx.players = deps.players
 	ctx.progressionService = deps.progressionService
 	ctx.gameConfig = deps.gameConfig
+	ctx.blueprintDiscoveryService = deps.blueprintDiscoveryService
 end
 
 function WaveService.bindStageFlow(stageFlow)
@@ -141,6 +164,11 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 		sess.bossSpawned = false
 		sess.bossPart = nil
 		sess.killCount = 0
+		sess.normalKills = 0
+		sess.eliteKills = 0
+		sess.bossKills = 0
+		sess.bossSpawnAt = nil
+		sess.finalDamageTakenByUserId = {}
 		sess.startTime = tick()
 		sess.lastSpawnTime = tick()
 		sess.lastEliteSpawnTime = tick()
@@ -179,6 +207,18 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 			local prog = progressionService.getHudProgress(p)
 			local ups = progressionService.getUpgradeCounts(p)
 
+			local finalDamageTaken = sess.finalDamageTakenByUserId[p.UserId] or 0
+			local baseMax = gameConfig.PlayerBaseHealth
+			if type(baseMax) ~= "number" or baseMax <= 0 then
+				baseMax = 100
+			end
+			local cleanDamageBudget = progressionService.getEffectiveMaxHealthFor(p, baseMax)
+
+			local bossKillElapsedSeconds = nil
+			if cleared and type(sess.bossSpawnAt) == "number" then
+				bossKillElapsedSeconds = tick() - sess.bossSpawnAt
+			end
+
 			local grant = RunResultRewardPolicy.compute({
 				outcome = outcome,
 				floor = floorIdx,
@@ -186,13 +226,50 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 				cleared = cleared,
 				killCount = sess.killCount,
 				survivalSeconds = survivalSeconds,
+				normalKills = sess.normalKills,
+				eliteKills = sess.eliteKills,
+				bossKills = sess.bossKills,
+				bossKillElapsedSeconds = bossKillElapsedSeconds,
+				finalDamageTaken = finalDamageTaken,
+				cleanDamageBudget = cleanDamageBudget,
 			}, gameConfig)
 			local materialsGranted = grant.materialsGranted
-			local applied, grantErr = RelicProfilePersistence.grantMaterials(p.UserId, materialsGranted)
+			local currenciesGranted = grant.currenciesGranted
+			local matApplied, matErr = RelicProfilePersistence.grantMaterials(p.UserId, materialsGranted)
+			local curApplied, curErr = RelicProfilePersistence.grantCurrencies(p.UserId, currenciesGranted)
+			local applied = matApplied and curApplied
+			local grantErr = matErr or curErr
+						local blueprintProgressGranted = {}
+			local bpApplied = true
+			local bpGrantErr = nil
+			local blueprintSvc = ctx.blueprintDiscoveryService
+			if blueprintSvc and type(blueprintSvc.takeAndClearPending) == "function" then
+				blueprintProgressGranted = blueprintSvc.takeAndClearPending(p.UserId)
+				if next(blueprintProgressGranted) then
+					bpApplied, bpGrantErr = RelicProfilePersistence.grantBlueprintProgress(
+						p.UserId,
+						blueprintProgressGranted
+					)
+					if not bpApplied then
+						warn(string.format(
+							"[WaveService] blueprint result grant failed uid=%d err=%s",
+							p.UserId,
+							tostring(bpGrantErr)
+						))
+					end
+				end
+			end
 			local rewardSummary = {
 				applied = applied,
 				materialsGranted = materialsGranted,
+				currenciesGranted = currenciesGranted,
+				rewardBudget = grant.rewardBudget,
+				blueprintProgressGranted = blueprintProgressGranted,
+				blueprintGrantApplied = bpApplied,
 			}
+			if not bpApplied then
+				rewardSummary.blueprintGrantError = bpGrantErr
+			end
 			if not applied then
 				rewardSummary.grantError = grantErr
 				warn(string.format(
@@ -248,8 +325,16 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 		return true
 	end
 
-	recordKillImpl = function()
+	recordKillImpl = function(entry)
 		sess.killCount += 1
+		local tier = entry and entry.state and entry.state.tier
+		if tier == EnemyTier.Elite then
+			sess.eliteKills += 1
+		elseif EnemyTier.isBossFamily(tier) or (entry and entry.state and entry.state.isBoss) then
+			sess.bossKills += 1
+		else
+			sess.normalKills += 1
+		end
 	end
 
 	runService.Heartbeat:Connect(function()
@@ -283,6 +368,7 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 		if elapsed >= sess.lengthSec and not sess.bossSpawned then
 			sess.bossPart = enemyService.spawnBoss(gameConfig)
 			sess.bossSpawned = true
+			sess.bossSpawnAt = tick()
 			if not sess.bossPart then
 				finishSession(false)
 			else
@@ -334,6 +420,10 @@ function WaveService.init(players, runService, gameConfig, enemyService, progres
 				end
 			end
 		end
+	end)
+
+	PlayerContactDamageService.bindFinalDamageRecorder(function(player, amount)
+		WaveService.recordFinalDamage(player, amount)
 	end)
 end
 

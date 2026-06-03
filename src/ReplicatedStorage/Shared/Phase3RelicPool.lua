@@ -17,6 +17,7 @@ local POOL_BY_WEAPON_ID: { [string]: { string } } = {
 	SwordShield = {
 		"run_reinforced_rim",
 		"run_rhythm_harness",
+		"run_shield_spike",
 	},
 	BasicMagic = {},
 }
