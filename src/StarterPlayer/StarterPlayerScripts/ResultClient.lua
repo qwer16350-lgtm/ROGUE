@@ -3,6 +3,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local RunConstants = require(Shared:WaitForChild("Run"):WaitForChild("RunConstants"))
+local RelicDefinitions = require(Shared:WaitForChild("RelicDefinitions"))
+local RunRewardBudgetPolicy = require(Shared:WaitForChild("RunRewardBudgetPolicy"))
 
 local ResultClient = {}
 
@@ -68,6 +70,28 @@ function ResultClient.init()
 		pad.Parent = frame
 
 
+		
+		local function formatBlueprintProgressGranted(summary)
+			if type(summary) ~= "table" then
+				return "(없음)"
+			end
+			local granted = summary.blueprintProgressGranted
+			if type(granted) ~= "table" or not next(granted) then
+				return "(없음)"
+			end
+			local lines = {}
+			for blueprintId, amt in pairs(granted) do
+				if type(blueprintId) == "string" and type(amt) == "number" and amt > 0 then
+					local label = RelicDefinitions.getDisplayLabelForBlueprintId(blueprintId)
+					table.insert(lines, string.format("%s +%d", label, math.floor(amt + 0.5)))
+				end
+			end
+			table.sort(lines)
+			if #lines == 0 then
+				return "(없음)"
+			end
+			return table.concat(lines, ", ")
+		end
 		local function formatMaterialsGranted(summary)
 			if type(summary) ~= "table" then
 				return "(없음)"
@@ -77,10 +101,33 @@ function ResultClient.init()
 				return "(없음)"
 			end
 			local lines = {}
-			for _, key in ipairs({ "shard", "ancient_shard", "ceremonial_coin" }) do
+			for _, key in ipairs(RunRewardBudgetPolicy.CRAFT_MATERIAL_KEYS) do
 				local amt = granted[key]
 				if type(amt) == "number" and amt > 0 then
-					table.insert(lines, string.format("%s +%d", key, amt))
+					local label = RunRewardBudgetPolicy.MATERIAL_DISPLAY_NAMES[key] or key
+					table.insert(lines, string.format("%s +%d", label, math.floor(amt + 0.5)))
+				end
+			end
+			if #lines == 0 then
+				return "(없음)"
+			end
+			return table.concat(lines, ", ")
+		end
+
+		local function formatCurrenciesGranted(summary)
+			if type(summary) ~= "table" then
+				return "(없음)"
+			end
+			local granted = summary.currenciesGranted
+			if type(granted) ~= "table" then
+				return "(없음)"
+			end
+			local lines = {}
+			for _, key in ipairs(RunRewardBudgetPolicy.CURRENCY_KEYS) do
+				local amt = granted[key]
+				if type(amt) == "number" and amt > 0 then
+					local label = RunRewardBudgetPolicy.CURRENCY_DISPLAY_NAMES[key] or key
+					table.insert(lines, string.format("%s +%d", label, math.floor(amt + 0.5)))
 				end
 			end
 			if #lines == 0 then
@@ -118,10 +165,18 @@ function ResultClient.init()
 
 		local rewardSummary = data.RewardSummary
 		local rewardStr = formatMaterialsGranted(rewardSummary)
+		local currencyStr = formatCurrenciesGranted(rewardSummary)
 		if type(rewardSummary) == "table" and rewardSummary.applied == false then
 			rewardStr = rewardStr .. " (저장 실패)"
+			currencyStr = currencyStr .. " (저장 실패)"
 		end
-		line("획득 재료: " .. rewardStr, 55, 28)
+		line("Materials: " .. rewardStr, 55, 28)
+		line("Currency: " .. currencyStr, 57, 28)
+		local blueprintStr = formatBlueprintProgressGranted(rewardSummary)
+		if type(rewardSummary) == "table" and rewardSummary.blueprintGrantApplied == false then
+			blueprintStr = blueprintStr .. " (저장 실패)"
+		end
+		line("Blueprints: " .. blueprintStr, 56, 28)
 
 		local bossStr = (data.BossKilled == true) and "예" or "아니오"
 		line("보스 처치: " .. bossStr, 6)

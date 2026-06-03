@@ -7,6 +7,10 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local RelicDefinitions = require(Shared:WaitForChild("RelicDefinitions"))
 local RelicProfilePersistence = require(script.Parent:WaitForChild("RelicProfilePersistence"))
 
+local RunRewardBudgetPolicy = require(Shared:WaitForChild("RunRewardBudgetPolicy"))
+local CRAFT_MATERIAL_KEYS = RunRewardBudgetPolicy.CRAFT_MATERIAL_KEYS
+local CURRENCY_KEYS = RunRewardBudgetPolicy.CURRENCY_KEYS
+
 local RelicProfileService = {}
 
 local sessionsByUserId: { [number]: {
@@ -21,14 +25,18 @@ local getRelicProfileRemote: RemoteFunction? = nil
 local craftRelicRequestRemote: RemoteFunction? = nil
 local equipStartingRelicsRequestRemote: RemoteFunction? = nil
 
-local MATERIAL_KEYS = { "shard", "ancient_shard", "ceremonial_coin" }
+
 
 local function defaultMaterials(): { [string]: number }
 	return {
-		shard = 0,
-		ancient_shard = 0,
-		ceremonial_coin = 0,
+		mysterious_metal_part = 0,
+		stinky_bond = 0,
+		corrupted_gear = 0,
 	}
+end
+
+local function defaultCurrencies(): { [string]: number }
+	return { ancient_shard = 0 }
 end
 
 local function copyMaterials(src: any): { [string]: number }
@@ -36,7 +44,7 @@ local function copyMaterials(src: any): { [string]: number }
 	if type(src) ~= "table" then
 		return out
 	end
-	for _, key in ipairs(MATERIAL_KEYS) do
+	for _, key in ipairs(CRAFT_MATERIAL_KEYS) do
 		local v = src[key]
 		if type(v) == "number" then
 			out[key] = v
@@ -110,12 +118,44 @@ local function shouldSkipCraftRequirements(): boolean
 	return type(dbg) == "table" and dbg.RelicCraftSkipRequirements == true
 end
 
+
+local function copyCurrencies(src: any): { [string]: number }
+	local out = defaultCurrencies()
+	if type(src) ~= "table" then
+		return out
+	end
+	for _, key in ipairs(CURRENCY_KEYS) do
+		local v = src[key]
+		if type(v) == "number" then
+			out[key] = v
+		end
+	end
+	return out
+end
+
+local function normalizeSessionProfile(profile: any): any
+	if type(profile) ~= "table" then
+		return profile
+	end
+	profile.currencies = copyCurrencies(profile.currencies)
+	if type(profile.materials) == "table" then
+		local legacy = profile.materials.ancient_shard
+		if type(legacy) == "number" and legacy > 0 then
+			profile.currencies.ancient_shard = (profile.currencies.ancient_shard or 0) + math.floor(legacy + 0.5)
+		end
+	end
+	profile.materials = copyMaterials(profile.materials)
+	profile.version = 2
+	return profile
+end
+
 function RelicProfileService.getDefaultProfile(): any
 	return {
-		version = 1,
+		version = 2,
 		ownedRelics = {},
 		blueprintProgress = {},
 		materials = defaultMaterials(),
+		currencies = defaultCurrencies(),
 		equippedStartingRelics = {},
 	}
 end
@@ -146,6 +186,10 @@ local function applyTestSeed(profile: any)
 	if type(seed.materials) == "table" then
 		profile.materials = copyMaterials(seed.materials)
 	end
+	if type(seed.currencies) == "table" then
+		profile.currencies = copyCurrencies(seed.currencies)
+	end
+	normalizeSessionProfile(profile)
 	if type(seed.equippedStartingRelics) == "table" then
 		profile.equippedStartingRelics = copyEquippedStartingRelics(seed.equippedStartingRelics)
 	end
@@ -292,7 +336,7 @@ local function beginProfileLoad(player: Player)
 		end
 		if loaded then
 			applyTestSeed(loaded)
-			meta.profile = loaded
+			meta.profile = normalizeSessionProfile(loaded)
 			meta.loadState = "ready"
 			meta.persistDisabled = false
 		else
@@ -579,6 +623,7 @@ function RelicProfileService.getPublicProfile(player: Player): any
 		ownedRelics = copyOwnedRelics(profile.ownedRelics),
 		blueprintProgress = copyBlueprintProgress(profile.blueprintProgress),
 		materials = copyMaterials(profile.materials),
+		currencies = copyCurrencies(profile.currencies),
 		equippedStartingRelics = copyEquippedStartingRelics(profile.equippedStartingRelics),
 		craftableRelics = RelicProfileService.buildCraftableRelics(profile),
 		startingEligibleRelics = RelicProfileService.buildStartingEligibleRelics(profile),

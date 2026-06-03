@@ -1,8 +1,12 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local RunRewardBudgetPolicy = require(Shared:WaitForChild("RunRewardBudgetPolicy"))
+
 local LobbyRelicProfileClient = {}
 
-local MATERIAL_KEYS = { "shard", "ancient_shard", "ceremonial_coin" }
+local CRAFT_MATERIAL_KEYS = RunRewardBudgetPolicy.CRAFT_MATERIAL_KEYS
+local CURRENCY_KEYS = RunRewardBudgetPolicy.CURRENCY_KEYS
 local LOAD_RETRY_INTERVAL = 0.5
 local LOAD_RETRY_MAX = 10
 
@@ -10,17 +14,35 @@ local getRelicProfileRemote: RemoteFunction? = nil
 local lastProfile: any = nil
 
 function LobbyRelicProfileClient.getMaterialKeys(): { string }
-	return MATERIAL_KEYS
+	return CRAFT_MATERIAL_KEYS
+end
+
+function LobbyRelicProfileClient.getCurrencyKeys(): { string }
+	return CURRENCY_KEYS
 end
 
 function LobbyRelicProfileClient.formatMaterials(materials: any): string
 	local parts = {}
-	for _, key in ipairs(MATERIAL_KEYS) do
+	for _, key in ipairs(CRAFT_MATERIAL_KEYS) do
 		local amt = 0
 		if type(materials) == "table" and type(materials[key]) == "number" then
 			amt = materials[key]
 		end
-		table.insert(parts, string.format("%s=%d", key, amt))
+		local label = RunRewardBudgetPolicy.MATERIAL_DISPLAY_NAMES[key] or key
+		table.insert(parts, string.format("%s=%d", label, amt))
+	end
+	return table.concat(parts, ", ")
+end
+
+function LobbyRelicProfileClient.formatCurrencies(currencies: any): string
+	local parts = {}
+	for _, key in ipairs(CURRENCY_KEYS) do
+		local amt = 0
+		if type(currencies) == "table" and type(currencies[key]) == "number" then
+			amt = currencies[key]
+		end
+		local label = RunRewardBudgetPolicy.CURRENCY_DISPLAY_NAMES[key] or key
+		table.insert(parts, string.format("%s=%d", label, amt))
 	end
 	return table.concat(parts, ", ")
 end

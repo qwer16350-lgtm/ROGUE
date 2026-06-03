@@ -1,11 +1,18 @@
--- PlayerRelicProfile DataStore I/O (Step 5A). Stage result grants (5B). Lobby RelicProfileService.
+-- PlayerRelicProfile DataStore I/O. Stage result grants (RewardBudget minimum). Lobby RelicProfileService.
 
 local DataStoreService = game:GetService("DataStoreService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local RunRewardBudgetPolicy = require(
+	ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RunRewardBudgetPolicy")
+)
 
 local RelicProfilePersistence = {}
 
-local SCHEMA_VERSION = 1
-local MATERIAL_KEYS = { "shard", "ancient_shard", "ceremonial_coin" }
+local SCHEMA_VERSION = 2
+local CRAFT_MATERIAL_KEYS = RunRewardBudgetPolicy.CRAFT_MATERIAL_KEYS
+local CURRENCY_KEYS = RunRewardBudgetPolicy.CURRENCY_KEYS
+local LEGACY_MATERIAL_KEYS = { "shard", "ancient_shard", "ceremonial_coin" }
 --- Retired RelicData id (7C-1): keep ownedRelics; never restore to equipped loadout.
 local RETIRED_EQUIPPED_RELIC_ID = "cracked_sword_tip"
 
@@ -18,10 +25,14 @@ local store: GlobalDataStore? = nil
 
 local function defaultMaterials(): { [string]: number }
 	return {
-		shard = 0,
-		ancient_shard = 0,
-		ceremonial_coin = 0,
+		mysterious_metal_part = 0,
+		stinky_bond = 0,
+		corrupted_gear = 0,
 	}
+end
+
+local function defaultCurrencies(): { [string]: number }
+	return { ancient_shard = 0 }
 end
 
 local function copyMaterials(src: any): { [string]: number }
@@ -29,13 +40,48 @@ local function copyMaterials(src: any): { [string]: number }
 	if type(src) ~= "table" then
 		return out
 	end
-	for _, key in ipairs(MATERIAL_KEYS) do
+	for _, key in ipairs(CRAFT_MATERIAL_KEYS) do
 		local v = src[key]
 		if type(v) == "number" and v >= 0 then
 			out[key] = v
 		end
 	end
 	return out
+end
+
+local function copyCurrencies(src: any): { [string]: number }
+	local out = defaultCurrencies()
+	if type(src) ~= "table" then
+		return out
+	end
+	for _, key in ipairs(CURRENCY_KEYS) do
+		local v = src[key]
+		if type(v) == "number" and v >= 0 then
+			out[key] = v
+		end
+	end
+	return out
+end
+
+local function migrateLegacyMaterialsToCurrencies(materials: any, currencies: { [string]: number })
+	if type(materials) ~= "table" then
+		return
+	end
+	local legacyShard = materials.ancient_shard
+	if type(legacyShard) == "number" and legacyShard > 0 then
+		currencies.ancient_shard = (currencies.ancient_shard or 0) + math.floor(legacyShard + 0.5)
+	end
+end
+
+local function normalizeProfileStorage(profile: any): any
+	if type(profile) ~= "table" then
+		return profile
+	end
+	profile.currencies = copyCurrencies(profile.currencies)
+	migrateLegacyMaterialsToCurrencies(profile.materials, profile.currencies)
+	profile.materials = copyMaterials(profile.materials)
+	profile.version = SCHEMA_VERSION
+	return profile
 end
 
 local function copyOwnedRelics(src: any): { [string]: boolean }
@@ -115,6 +161,7 @@ function RelicProfilePersistence.migrate(raw: any): any?
 		ownedRelics = raw.ownedRelics,
 		blueprintProgress = raw.blueprintProgress,
 		materials = raw.materials,
+		currencies = raw.currencies,
 		equippedStartingRelics = raw.equippedStartingRelics,
 	}
 end
@@ -123,33 +170,44 @@ function RelicProfilePersistence.mergeWithDefault(migrated: any?): any
 	assert(getDefaultProfileFn, "[RelicProfilePersistence] init required")
 	local base = getDefaultProfileFn()
 	if type(migrated) ~= "table" then
-		return {
-			version = base.version,
+		return normalizeProfileStorage({
+			version = SCHEMA_VERSION,
 			ownedRelics = copyOwnedRelics(base.ownedRelics),
 			blueprintProgress = copyBlueprintProgress(base.blueprintProgress),
 			materials = copyMaterials(base.materials),
+			currencies = copyCurrencies(base.currencies),
 			equippedStartingRelics = copyEquippedStartingRelics(base.equippedStartingRelics),
-		}
+		})
 	end
-	return {
+	return normalizeProfileStorage({
 		version = SCHEMA_VERSION,
 		ownedRelics = copyOwnedRelics(migrated.ownedRelics),
 		blueprintProgress = copyBlueprintProgress(migrated.blueprintProgress),
-		materials = copyMaterials(migrated.materials),
+		materials = migrated.materials,
+		currencies = migrated.currencies,
 		equippedStartingRelics = copyEquippedStartingRelics(migrated.equippedStartingRelics),
-	}
+	})
 end
 
 function RelicProfilePersistence.packForStorage(profile: any): any
 	if type(profile) ~= "table" then
 		return RelicProfilePersistence.mergeWithDefault(nil)
 	end
-	return {
+	local normalized = normalizeProfileStorage({
 		version = SCHEMA_VERSION,
 		ownedRelics = copyOwnedRelics(profile.ownedRelics),
 		blueprintProgress = copyBlueprintProgress(profile.blueprintProgress),
-		materials = copyMaterials(profile.materials),
+		materials = profile.materials,
+		currencies = profile.currencies,
 		equippedStartingRelics = copyEquippedStartingRelics(profile.equippedStartingRelics),
+	})
+	return {
+		version = SCHEMA_VERSION,
+		ownedRelics = normalized.ownedRelics,
+		blueprintProgress = normalized.blueprintProgress,
+		materials = normalized.materials,
+		currencies = normalized.currencies,
+		equippedStartingRelics = normalized.equippedStartingRelics,
 	}
 end
 
@@ -222,16 +280,15 @@ function RelicProfilePersistence.saveProfile(userId: number, profile: any): (boo
 	return false, lastErr or "SAVE_FAILED"
 end
 
-
 local function applyMaterialGrants(profile: any, materialsGranted: any): any
 	if type(profile) ~= "table" then
 		return profile
 	end
-	profile.materials = copyMaterials(profile.materials)
+	profile = normalizeProfileStorage(profile)
 	if type(materialsGranted) ~= "table" then
 		return profile
 	end
-	for _, key in ipairs(MATERIAL_KEYS) do
+	for _, key in ipairs(CRAFT_MATERIAL_KEYS) do
 		local add = materialsGranted[key]
 		if type(add) == "number" and add > 0 then
 			profile.materials[key] = (profile.materials[key] or 0) + math.floor(add + 0.5)
@@ -244,6 +301,9 @@ function RelicProfilePersistence.grantMaterials(userId: number, materialsGranted
 	if not enabled then
 		return false, "disabled"
 	end
+	if type(materialsGranted) ~= "table" or not next(materialsGranted) then
+		return true, nil
+	end
 	local profile, loadErr = RelicProfilePersistence.loadProfile(userId)
 	if not profile then
 		return false, loadErr or "LOAD_FAILED"
@@ -251,6 +311,71 @@ function RelicProfilePersistence.grantMaterials(userId: number, materialsGranted
 	profile = applyMaterialGrants(profile, materialsGranted)
 	return RelicProfilePersistence.saveProfile(userId, profile)
 end
+
+local function applyCurrencyGrants(profile: any, currenciesGranted: any): any
+	if type(profile) ~= "table" then
+		return profile
+	end
+	profile = normalizeProfileStorage(profile)
+	if type(currenciesGranted) ~= "table" then
+		return profile
+	end
+	for _, key in ipairs(CURRENCY_KEYS) do
+		local add = currenciesGranted[key]
+		if type(add) == "number" and add > 0 then
+			profile.currencies[key] = (profile.currencies[key] or 0) + math.floor(add + 0.5)
+		end
+	end
+	return profile
+end
+
+function RelicProfilePersistence.grantCurrencies(userId: number, currenciesGranted: any): (boolean, string?)
+	if not enabled then
+		return false, "disabled"
+	end
+	if type(currenciesGranted) ~= "table" or not next(currenciesGranted) then
+		return true, nil
+	end
+	local profile, loadErr = RelicProfilePersistence.loadProfile(userId)
+	if not profile then
+		return false, loadErr or "LOAD_FAILED"
+	end
+	profile = applyCurrencyGrants(profile, currenciesGranted)
+	return RelicProfilePersistence.saveProfile(userId, profile)
+end
+
+local function applyBlueprintGrants(profile: any, blueprintGranted: any): any
+	if type(profile) ~= "table" then
+		return profile
+	end
+	profile.blueprintProgress = copyBlueprintProgress(profile.blueprintProgress)
+	if type(blueprintGranted) ~= "table" then
+		return profile
+	end
+	for blueprintId, add in pairs(blueprintGranted) do
+		if type(blueprintId) == "string" and blueprintId ~= "" and type(add) == "number" and add > 0 then
+			profile.blueprintProgress[blueprintId] = (profile.blueprintProgress[blueprintId] or 0)
+				+ math.floor(add + 0.5)
+		end
+	end
+	return profile
+end
+
+function RelicProfilePersistence.grantBlueprintProgress(userId: number, blueprintGranted: any): (boolean, string?)
+	if not enabled then
+		return false, "disabled"
+	end
+	if type(blueprintGranted) ~= "table" or not next(blueprintGranted) then
+		return true, nil
+	end
+	local profile, loadErr = RelicProfilePersistence.loadProfile(userId)
+	if not profile then
+		return false, loadErr or "LOAD_FAILED"
+	end
+	profile = applyBlueprintGrants(profile, blueprintGranted)
+	return RelicProfilePersistence.saveProfile(userId, profile)
+end
+
 function RelicProfilePersistence.init(gameConfig: any, opts: { getDefaultProfile: () -> any })
 	assert(opts and opts.getDefaultProfile, "[RelicProfilePersistence] getDefaultProfile required")
 	getDefaultProfileFn = opts.getDefaultProfile
