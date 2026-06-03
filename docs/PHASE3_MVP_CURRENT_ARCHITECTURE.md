@@ -8,7 +8,8 @@
 | 문서 경로 | `docs/PHASE3_MVP_CURRENT_ARCHITECTURE.md` |
 | 코드 정본 | `src/` + `default.project.json` |
 | 선행 문서 | `docs/PHASE3_DATASET_ANALYSIS.md`, `docs/PHASE3_RELIC_CANDIDATE_TRIAGE.md`, `docs/CHOICE_FLOW_CURRENT_AND_PHASE3_PLAN.md` |
-| 최종 갱신 기준 | Phase 3 meta core closeout · 7종 Run relic · profile/chest/Starting · BuildTag/ClassDetection baseline |
+| 최종 갱신 기준 | **8종 Run relic** · Block/Knockback generic mechanic (**Studio §3b/§3c verified**) · meta/chest/Starting · BuildTag/ClassDetection |
+| Mechanic routing | `docs/RELIC_MECHANIC_ROUTING.md` |
 
 ---
 
@@ -34,7 +35,8 @@
 | 획득 | `Phase3RelicChest` 픽업 → `ChoiceKind = "Phase3Relic"` 3택1 |
 | 풀 | `Phase3RelicPool.lua` + `RelicDefinitions.lua` |
 | 보유 | `phase3ActiveRelicIds` (런당 중복 획득 불가) |
-| 전투 | `RelicModifierApplicator` → `UpgradeData` effective (SS / TH / Spear) |
+| 전투 (attack stats) | `RelicModifierApplicator` → `UpgradeData` effective (SS / TH / Spear) |
+| 전투 (contact block) | `BlockChanceResolver` → player attributes → `PlayerContactDamageService` |
 | 표시 | `BuildTagService` snapshot · `ClassDetection` (효과 없음, detect only) |
 | 테스트 시드 | `GameConfig.Debug.Phase3TestRelicIds` (정식 unlock/equip 아님) |
 
@@ -122,16 +124,16 @@ Run relic id is RelicDefinitions SSOT (run_* namespace).
 
 ---
 
-## 5. Phase3RelicPool — Current (7 relics)
+## 5. Phase3RelicPool — Current (8 relics)
 
 | weaponId | relicId (순서) | 종수 |
 |----------|----------------|------|
-| **SwordShield** | `run_reinforced_rim`, `run_rhythm_harness` | 2 |
+| **SwordShield** | `run_reinforced_rim`, `run_rhythm_harness`, `run_shield_spike` | 3 |
 | **TwoHandedSword** | `mercenarys_baldric`, `shattering_light`, `last_giants_claw` | 3 |
 | **Spear** | `needle_edge`, `giants_pike` | 2 |
 | **BasicMagic** | *(empty)* | 0 |
 
-**총 7종** (`Phase3RelicPool.lua` `POOL_BY_WEAPON_ID`).
+**총 8종** (`Phase3RelicPool.lua` `POOL_BY_WEAPON_ID`).
 
 ---
 
@@ -139,8 +141,9 @@ Run relic id is RelicDefinitions SSOT (run_* namespace).
 
 | relicId | scope | targetTags | stat modifier(s) |
 |---------|-------|------------|------------------|
-| `run_reinforced_rim` | SwordShield | `ss` + `sweep` | `sweepBaseDamage` ×1.15 |
+| `run_reinforced_rim` | SwordShield | `block` | `blockChance` **openOrAdd** (0→5%, else +10%p) — **첫 blockChance sample** |
 | `run_rhythm_harness` | SwordShield | `ss` (weapon-wide) | `attackIntervalSeconds` ×0.90 |
+| `run_shield_spike` | SwordShield | `ss` + `sweep` | `knockbackPower` +60 — **첫 knockbackPower sample** |
 | `mercenarys_baldric` | TwoHandedSword | `th` + `sweep` | `sweepBaseDamage` ×1.10 |
 | `shattering_light` | TwoHandedSword | `th` + `sweep` | `sweepBaseDamage` ×0.5, `attackIntervalSeconds` ×0.7 |
 | `last_giants_claw` | TwoHandedSword | `th` + `sweep` | `sweepBaseDamage` ×1.4, `attackIntervalSeconds` ×1.3 |
@@ -149,32 +152,93 @@ Run relic id is RelicDefinitions SSOT (run_* namespace).
 
 `giants_pike`: upgrade 적용 **후** `RangeStuds`에 ×2.0 후적용 (snapshot 없음). 기본 Spear thrust range 12 stud → ×2.0 시 **24** (업그레이드 0 기준).
 
-**Schema enum (`ALLOWED_STATS`):** `sweepBaseDamage`, `thrustBaseDamage`, `thrustRangeStuds`, `attackIntervalSeconds`, `blockChance`, `attackHitCount` — applicator는 아래 §7만 **실연결**.
+**Schema enum (`ALLOWED_STATS`):** `sweepBaseDamage`, `thrustBaseDamage`, `thrustRangeStuds`, `attackIntervalSeconds`, `blockChance`, `knockbackPower`, `attackHitCount` — attack-bound은 §8 applicator; `blockChance`는 §7.6 resolver.
+
+**Operations:** `add`, `mul`, `openOrAdd` (`openOrAdd` = **blockChance only**, validate in `RelicDefinitions`).
 
 ---
 
-## 7. RelicModifierApplicator — Supported Stats (by weapon)
+## 7. Generic relic mechanics (Block · Knockback)
 
-코드: `STAT_FIELD_*` + `applyTo*Effective` (2026-05 기준).
+**Routing SSOT:** `docs/RELIC_MECHANIC_ROUTING.md`.
 
-### 7.1 Common (정의·스키마)
+### 7.0 Hard rule — no per-relic id in runtime combat
+
+| 모듈 | 금지 | 읽는 것 |
+|------|------|---------|
+| `CombatService` | `relicId ==` | `effective` stats (e.g. `Sweep.KnockbackPower`) |
+| `PlayerContactDamageService` | `relicId ==` | `blockCapable`, `effectiveBlockChance`, cooldown attributes |
+| `BlockChanceResolver` | `relicId ==` | all `phase3ActiveRelicIds` → `RelicDefinitions` modifiers only |
+| `ProgressionService` (combat) | per-relic combat branches | resolver/applicator outputs → attributes |
+
+샘플 id(`run_reinforced_rim`, `run_shield_spike`)는 **데이터 행 이름**이지 런타임 특수분기 키가 아니다.
+
+### 7.5 Knockback (SS Sweep — Studio §3c verified)
+
+```text
+RelicDefinitions (knockbackPower)
+  → RelicModifierApplicator (ss + sweep)
+  → UpgradeData.getSwordShieldEffectiveCombat → Sweep.KnockbackPower (default 0)
+  → CombatService SwordShield Sweep hit (Power > 0)
+  → knockbackUntil + AssemblyLinearVelocity
+  → EnemyService (knockbackUntil guard; no relic awareness)
+```
+
+| 항목 | 값 / 범위 |
+|------|-----------|
+| 첫 sample | `run_shield_spike` — add **60** |
+| MVP scope | **SS Sweep only**; Thrust / TH / Spear / BasicMagic 없음 |
+| Duration | `GameConfig.KnockbackCombat.DefaultDurationSeconds` = **0.20** |
+| Kill hit | 생존 적만 넉백 (처치 타격 스킵) |
+
+### 7.6 Block contact (Studio §3b verified)
+
+```text
+RelicDefinitions (blockChance: add / mul / openOrAdd)
+  → BlockChanceResolver (pass1 add/mul, pass2 openOrAdd)
+  → ProgressionService.syncBlockDefenseAttributes
+  → attributes: blockCapable, effectiveBlockChance
+  → PlayerContactDamageService (contact tick)
+```
+
+| 항목 | 값 / 범위 |
+|------|-----------|
+| 첫 sample | `run_reinforced_rim` — openOrAdd open **0.05**, add **0.10** |
+| Base | `GameConfig.BlockDefense.BaseBlockChance` = **0** |
+| Cooldown | `BlockCooldownSeconds` = **3** |
+| Rim 전용 GameConfig key | **없음** (제거됨) |
+| Applicator `blockChance` | **런타임 미적용** (resolver only) |
+
+**기대 chance (Studio §3b):** no relic **0%** · Rim only **5%** · existing 5% + Rim **15%**.
+
+---
+
+## 8. RelicModifierApplicator — Supported Stats (by weapon)
+
+코드: `STAT_FIELD_*` + `applyTo*Effective` (2026-05 기준). Block/Knockback mechanics: §7.
+
+### 8.1 Common (정의·스키마)
 
 | stat | 비고 |
 |------|------|
 | `attackIntervalSeconds` | 무기별 mapping (`thrust=false` 또는 SS weapon-wide) |
-| `blockChance`, `attackHitCount` | `ALLOWED_STATS`에만 존재 — **applicator 미연결** |
+| `attackHitCount` | `ALLOWED_STATS`에만 존재 — **applicator 미연결** |
+| `blockChance` | **BlockChanceResolver only** (Applicator skips); contact → `PlayerContactDamageService` |
+| `knockbackPower` | attack-bound (SS `Sweep.KnockbackPower`); see §7.5 |
 
-### 7.2 SwordShield — **implemented**
+### 8.2 SwordShield — **implemented**
 
 | stat | maps to |
 |------|---------|
 | `sweepBaseDamage` | `Sweep.BaseDamage` |
 | `thrustBaseDamage` | `Thrust.BaseDamage` |
 | `attackIntervalSeconds` | `AttackIntervalSeconds` (weapon-wide, `attackTag` 생략) |
+| `knockbackPower` | `Sweep.KnockbackPower` (`attackTag` = sweep) |
 
-경로: `getSwordShieldEffectiveCombat(..., phase3RelicIds)` → `applyToSwordShieldEffective`.
+경로: `getSwordShieldEffectiveCombat(..., phase3RelicIds)` → `applyToSwordShieldEffective`.  
+Block: §7.6 (`BlockChanceResolver` — **not** applicator `BlockChance`). Knockback: §7.5.
 
-### 7.3 TwoHandedSword — **implemented**
+### 8.3 TwoHandedSword — **implemented**
 
 | stat | maps to |
 |------|---------|
@@ -183,7 +247,7 @@ Run relic id is RelicDefinitions SSOT (run_* namespace).
 
 경로: `getTwoHandedSwordEffectiveCombat(..., phase3RelicIds)` → `applyToTwoHandedSwordEffective`.
 
-### 7.4 Spear — **implemented**
+### 8.4 Spear — **implemented**
 
 | stat | maps to |
 |------|---------|
@@ -196,13 +260,16 @@ Run relic id is RelicDefinitions SSOT (run_* namespace).
 
 ---
 
-## 8. Phase 3 MVP — Verified vs Not Implemented
+## 9. Phase 3 MVP — Verified vs Not Implemented
 
-### 8.1 Verified (playtest / dev)
+### 9.1 Verified (playtest / dev)
 
 | 축 | 상태 |
 |----|------|
-| Run relic 7종 + pool | `Phase3RelicPool` + `RelicDefinitions` |
+| Run relic **8종** + pool | `Phase3RelicPool` + `RelicDefinitions` (SS 3 incl. spike) |
+| **Block** contact MVP | `BlockChanceResolver` → attributes → `PlayerContactDamageService` (**Studio §3b**) |
+| **Knockback** SS Sweep | `knockbackPower` → effective → `CombatService` (**Studio §3c**) |
+| Blueprint / RewardBudget / Class effect | **회귀 없음** (Block/Knockback 검증 시 확인) |
 | Phase3RelicChest kill drop | SS / Spear / TH |
 | activeWeapons offer pool | round-robin, max 3 |
 | Modifier SS / TH / Spear | effective + combat (DevCombat when `ShowDevCombatPanel=true`, Publish default false) |
@@ -213,7 +280,7 @@ Run relic id is RelicDefinitions SSOT (run_* namespace).
 | Result material grant | `RunResultRewardPolicy` (5B placeholder) |
 | Starting loadout | equippedStartingRelicIds → phase3 seed · Definitions + Applicator |
 
-### 8.2 Not implemented / Phase 4+ (explicit)
+### 9.2 Not implemented / Phase 4+ (explicit)
 
 | 항목 |
 |------|
@@ -226,19 +293,24 @@ Run relic id is RelicDefinitions SSOT (run_* namespace).
 | Golden Trident / Forked Pike / Konic's Teeth / Sawtooth Spearhead 등 **패턴 변경** 유물 |
 | Attack_Amount / 다중 thrust |
 | AOE relic |
-| block / knockback / crit / attack skip relic (Phase3 applicator) |
+| TH / Spear **knockback** (SS Sweep only today) |
+| crit / attack skip relic |
+| `attackHitCount` / multi-hit runtime |
+| block **onBlockSuccess** trigger · knockback VFX/UI |
 | relic weight / random offer policy (round-robin deterministic) |
 | `cracked_sword_tip` mechanic redesign |
 
 ---
 
-## 9. Core Modules (Quick Reference)
+## 10. Core Modules (Quick Reference)
 
 | 모듈 | 경로 | 역할 |
 |------|------|------|
 | **Phase3RelicPool** | `Shared/Phase3RelicPool.lua` | 무기별 pool · `buildOfferChoicesForWeapons` · round-robin |
-| **RelicDefinitions** | `Shared/RelicDefinitions.lua` | Run relic 7종 + migrated starting ids |
-| **RelicModifierApplicator** | `Shared/RelicModifierApplicator.lua` | `applyToSwordShieldEffective` / `TwoHandedSword` / `Spear` |
+| **RelicDefinitions** | `Shared/RelicDefinitions.lua` | Run relic **8종** + migrated starting ids |
+| **BlockChanceResolver** | `Shared/BlockChanceResolver.lua` | `blockChance` modifiers → effective chance (no relicId branches) |
+| **RelicModifierApplicator** | `Shared/RelicModifierApplicator.lua` | attack effective; **skips** `blockChance` |
+| **PlayerContactDamageService** | `ServerScriptService/PlayerContactDamageService.lua` | contact damage + block roll (attributes only) |
 | **UpgradeData** | `Shared/UpgradeData.lua` | effective 계산 후 `phase3RelicIds` applicator |
 | **RelicProfileService** | `ServerScriptService/RelicProfileService.lua` | Lobby profile · craft · equip |
 | **RelicProfilePersistence** | `ServerScriptService/RelicProfilePersistence.lua` | DataStore I/O |
@@ -264,12 +336,13 @@ WeaponTagData
 **Parallel paths (do not merge):**
 
 - **Starting loadout:** Lobby `EquipStartingRelicsRequest` → Teleport `equippedStartingRelicIds` → `phase3ActiveRelicIds` seed
-- **Run relic:** `Phase3RelicChest` → `phase3ActiveRelicIds` → `RelicDefinitions` + applicator
+- **Run relic (attack stats):** `phase3ActiveRelicIds` → Applicator → `UpgradeData` effective → `CombatService`
+- **Run relic (contact block):** `phase3ActiveRelicIds` → `BlockChanceResolver` → attributes → `PlayerContactDamageService`
 - **Account:** craft → `ownedRelics` (chest does **not** unlock owned)
 
 ---
 
-## 10. Debug Test Method
+## 11. Debug Test Method
 
 `GameConfig.Debug.Phase3TestRelicIds` → `ensureProgress` 시 `phase3ActiveRelicIds` shallow copy (**not** unlock/equip).
 
@@ -280,14 +353,15 @@ WeaponTagData
 | `{ "last_giants_claw" }` | TH Sweep ×1.4, interval ×1.3 |
 | `{ "needle_edge" }` | Spear Thrust dmg ×1.10 |
 | `{ "giants_pike" }` | Spear Thrust `RangeStuds` ×2.0 (12→24) |
-| `{ "run_reinforced_rim" }` | SS Sweep dmg ×1.15 |
+| `{ "run_reinforced_rim" }` | 0% → **5%** entry (DevCombat `BlockDefense`; openOrAdd) |
+| `{ "run_shield_spike" }` | `Sweep.KnockbackPower` **60**; Sweep hit knockback |
 | `{ "run_rhythm_harness" }` | SS interval ×0.90 |
 
 절차: Rojo sync → Stage Play → weapon 선택 → config 변경 시 **재Play** → **Studio only:** `ShowDevCombatPanel = true` (Publish default **false**).
 
 ---
 
-## 11. Next Step Candidates (not committed)
+## 12. Next Step Candidates (not committed)
 
 1. Phase3RelicChest **드랍률 / UX / 밸런스** 조정  
 2. relic offer **random / weight** 정책 (현재 round-robin deterministic)  
@@ -298,13 +372,15 @@ WeaponTagData
 
 ---
 
-## 12. Hard Rules Going Forward
+## 13. Hard Rules Going Forward
 
 | 규칙 | 내용 |
 |------|------|
 | Triage first | `docs/PHASE3_RELIC_CANDIDATE_TRIAGE.md` 후 `RelicDefinitions` 등록 |
-| No per-relic combat if | `CombatService`에 `relicId ==` 분기 **금지** |
-| Applicator path | stat → `RelicModifierApplicator` + `UpgradeData` effective |
+| No per-relic combat if | `CombatService`, `PlayerContactDamageService`, `BlockChanceResolver`에 `relicId ==` **금지** |
+| Attack-bound stat | `RelicModifierApplicator` + `UpgradeData` effective → `CombatService` |
+| Contact block stat | `blockChance` → **`BlockChanceResolver`** only (not applicator runtime) |
+| Knockback stat | `knockbackPower` → effective → generic CombatService read |
 | Pattern/status | Attack_Amount, multi-thrust, AOE, status — **별도 마일스톤** |
 | Starting vs Run vs Account | equipped/phase3 (run) vs owned (account); chest never grants owned |
 | Detection ≠ effect | ClassDetection / BuildTag ≠ 클래스 전투 배율 |
@@ -314,11 +390,11 @@ WeaponTagData
 
 ---
 
-## 13. Phase 3 Closeout Status
+## 14. Phase 3 Closeout Status
 
 **Meta progression core: COMPLETE.** DataStore profile, Lobby relic UI, craft/equip, equipped→phase3 seed, owned chest filter, Result material placeholder (5B), 7C-3 legacy removal, publish-safe `GameConfig.Debug`.
 
-**Verification:** development playtest (no formal Publish regression suite).
+**Verification:** development playtest; **Block §3b · Knockback §3c · Blueprint/RewardBudget/Class 회귀** Studio confirmed (see `docs/VERIFICATION_PLAYTEST.md`). No formal Publish regression suite.
 
 **Phase 4+:** See `docs/PHASE3_RELIC_META_PROGRESSION.md` §14.
 
@@ -332,7 +408,8 @@ WeaponTagData
 | Meta SSOT | `docs/PHASE3_RELIC_META_PROGRESSION.md` §0 |
 | 엑셀·Tier | `docs/PHASE3_DATASET_ANALYSIS.md` |
 | 후보 triage | `docs/PHASE3_RELIC_CANDIDATE_TRIAGE.md` |
-| Playtest | `docs/VERIFICATION_PLAYTEST.md` |
+| Playtest | `docs/VERIFICATION_PLAYTEST.md` (§3b Block, §3c Knockback) |
+| Mechanic routing | `docs/RELIC_MECHANIC_ROUTING.md` |
 
 ---
 
@@ -344,3 +421,4 @@ WeaponTagData
 | 2026-05-27 | DroppedRelic legacy removed · Phase3RelicChest · 7종 pool · activeWeapons offer · SS/Spear range relic · 문서 전면 갱신. |
 | 2026-05-27 | Meta Step 3: fake owned/equipped Debug · RunRelicChestPool filters · CombatService offer gate helper. |
 | 2026-05-31 | Closeout docs sync — meta core complete · §8/§13 updated. |
+| 2026-05-31 | **8종 pool** (`run_shield_spike`) · generic Block/Knockback pipelines · Studio §3b/§3c verified · `RELIC_MECHANIC_ROUTING.md` |
